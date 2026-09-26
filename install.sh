@@ -39,6 +39,21 @@ if [[ "$SCOPE" == "global" ]]; then
   echo "  installed -> $DEST/qwen-parent-AGENTS.md (instructions path)"
 fi
 
+# Quota-guard scripts -> ~/scripts (NO-CLOBBER: a box with a working guard and
+# learned ceilings keeps its own; the repo copy is for fresh setups).
+if [[ -d "$SRC/scripts" ]] && [[ ! -f "$HOME/scripts/zen-budget.sh" ]]; then
+  mkdir -p "$HOME/scripts"
+  for f in "$SRC"/scripts/*.sh; do
+    cp "$f" "$HOME/scripts/"
+    chmod +x "$HOME/scripts/$(basename "$f")"
+    echo "  installed -> $HOME/scripts/$(basename "$f")"
+  done
+  echo "  note: enable the guard loop with:"
+  echo "    systemctl --user enable --now zen-budget-guard  (unit not included — see README)"
+elif [[ -f "$HOME/scripts/zen-budget.sh" ]]; then
+  echo "  kept existing ~/scripts/zen-budget.sh (no-clobber)"
+fi
+
 echo
 echo "Done ($SCOPE scope). Next steps:"
 echo "  1. NVIDIA NIM key (free): run 'opencode' -> /connect -> NVIDIA NIM"
