@@ -77,6 +77,10 @@ Rules:
 - A new day resets the counters (00:00 UTC). At session start read the ledger;
   assume 0 only if the script fails.
 - If a scout returns junk: ONE retry max, then do that slice yourself.
+- If Zen ever rejects scout-mimo with "free tier can only be used from
+  within OpenCode": treat it exactly like a throttle — MiMo dead for the
+  session, ▸ THROTTLED, re-delegate that slice to scout-nim (or take it
+  local). Never get stuck retrying a rejected provider.
 - Print the [QUOTA] line whenever its state changes, or every fan-out.
 
 Note (owner decision, 2026-09-26): the old zen-budget-guard model-flip
