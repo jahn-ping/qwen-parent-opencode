@@ -27,8 +27,9 @@
   .chip-srv.up { color: var(--green); border-color: #1d4423; }
   main { display: flex; gap: 10px; padding: 10px; flex: 1; min-height: 0;
          overflow-x: auto; overflow-y: hidden; }
-  .col { flex: 1 1 0; min-width: 360px; display: flex; flex-direction: column; gap: 10px;
-         min-height: 0; overflow-y: auto; overflow-x: hidden; }
+  .col { flex: 0 0 auto; width: calc((100% - 20px) / 3); min-width: 320px;
+         display: flex; flex-direction: column; gap: 10px; min-height: 0;
+         overflow: auto; resize: horizontal; }
   .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
            overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
   .panel > h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
@@ -468,6 +469,35 @@ function applySnapshot(snap) {
     ` · quota ${snap.quota.present ? "up" : "absent"}` +
     ` · engine ${snap.dockerLogs ? "docker" : "synthetic"} · ${ts(snap.t)}`;
 }
+
+// --------------------------------------------------------- size memory --
+// persist user-dragged panel sizes across reloads
+function initSizeMemory() {
+  const cols = document.querySelectorAll("main > .col");
+  ["dash-c0", "dash-c1", "dash-c2"].forEach((k, i) => {
+    const v = localStorage.getItem(k);
+    if (v && cols[i]) cols[i].style.width = v;
+  });
+  const eh = localStorage.getItem("dash-eng-h");
+  if (eh) $("panel-eng").style.height = eh;
+
+  const save = (key, val) => {
+    clearTimeout(save[key]);
+    save[key] = setTimeout(() => localStorage.setItem(key, val), 300);
+  };
+  const ro = new ResizeObserver((entries) => {
+    for (const e of entries) {
+      const i = [...cols].indexOf(e.target);
+      if (i >= 0) save(`dash-c${i}`, `${e.contentBoxSize?.[0]?.inlineSize ?? e.target.offsetWidth}px`);
+    }
+  });
+  cols.forEach((c) => ro.observe(c));
+  new ResizeObserver((entries) => {
+    for (const e of entries)
+      save("dash-eng-h", `${e.contentBoxSize?.[0]?.blockSize ?? e.target.offsetHeight}px`);
+  }).observe($("panel-eng"));
+}
+initSizeMemory();
 
 function connect() {
   const es = new EventSource("/stream");
