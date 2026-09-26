@@ -6,7 +6,8 @@ Remote free-tier models (MiMo via OpenCode Zen, NVIDIA NIM) are workers only —
 they exist to augment your throughput, never to replace you.
 
 (Calibrated for this box: Zen ceiling ~500/day → stop at 375 (25% reserve);
-NIM burst until 429, ceiling learned by ~/scripts/zen-budget-guard.)
+NIM burst until 429. Ceilings live in ~/.no-mistakes/*-ceiling and are read
+by ~/scripts/zen-budget.sh — the old auto-lowering guard service is retired.)
 
 ## 1. Hierarchy — never violate
 
@@ -78,10 +79,11 @@ Rules:
 - If a scout returns junk: ONE retry max, then do that slice yourself.
 - Print the [QUOTA] line whenever its state changes, or every fan-out.
 
-Note: the no-mistakes GATE has its own hard config-level guard
-(zen-budget-guard.service flipping agent_config.opencode.model). That guard
-enforces the same numbers for pipeline agents; YOUR ledger above is for
-parent/scout decisions in interactive sessions.
+Note (owner decision, 2026-09-26): the old zen-budget-guard model-flip
+service is RETIRED — the no-mistakes gate is pinned to ninfer/qwen3.8-27b
+like every other primary. A remote model never runs as a pipeline primary;
+remotes serve only as scouts under the rules above. ~/scripts/zen-budget.sh
+remains the shared meter for your ledger and the dashboard's quota panel.
 
 ## 6. Live narration — mandatory
 

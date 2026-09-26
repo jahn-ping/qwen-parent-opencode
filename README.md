@@ -244,3 +244,20 @@ no emulation: it throttles with a real 429, which the protocol turns into
 discipline, put a LiteLLM proxy in front of both providers with per-key
 daily request caps, and point the two `baseURL`s at the proxy — the config
 otherwise unchanged.
+
+## Decisions log
+
+- **2026-09-26 — one harness, one law.** Everything that used to compete
+  with the kit is retired: the old `ninfer-tui.py` control panel (moved to
+  `~/attic/removed-20260926/`), the MiMo-era pipeline artifacts
+  (`/tmp/qpo-check`, no-mistakes worktrees), and above all the
+  `zen-budget-guard` model-flip service (stopped + disabled) that used to
+  hand the no-mistakes gate to NIM/MiMo. The gate is pinned to
+  `ninfer/qwen3.8-27b` like every other primary — remote models exist only
+  as scouts, full stop. `zen-budget.sh` stays as the meter behind the
+  dashboard's quota panel. Restore the guard only if you ever want the old
+  behavior back: `systemctl --user enable --now zen-budget-guard`.
+- **2026-09-26 — Zen client rule documented.** MiMo's free tier only serves
+  calls from within OpenCode (TUI/desktop); headless fan-out leans on
+  scout-nim + scout-local (verified end-to-end: parent → NIM → correct
+  brief → quota tick).
