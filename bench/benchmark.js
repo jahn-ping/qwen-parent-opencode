@@ -396,22 +396,52 @@ async function sectionScouts() {
       note: "skipped — run with --scouts to include (costs ~1 MiMo + ~1 NIM call)" }));
     return;
   }
-  const pings = [["scout-local", null], ["scout-mimo", null], ["scout-nim", null]];
-  for (const [agent] of pings) {
-    await check("scouts", `ping ${agent}`, async () => {
+  // Subagents are task-tool-only (opencode run --agent <subagent> falls back
+  // to the primary) — so the honest test is delegating THROUGH the parent,
+  // exactly like production fan-out. The repo's README.md is the target file.
+  const repoDir = path.join(__dirname, "..");
+  const agents = ["scout-mimo", "scout-nim", "scout-local"];
+  const kvBefore = await scoutQuotaSnapshot();
+  for (const agent of agents) {
+    await check("scouts", `fan-out via parent → ${agent}`, async () => {
+      const prompt = `Use the task tool to delegate to the ${agent} subagent. ` +
+        `Scout task: read README.md in the current directory and return its first ` +
+        `heading as a single line. Then report the scout's exact reply to me.`;
       const t0 = Date.now();
       const r = await new Promise((resolve) => {
-        execFile("opencode", ["run", "--agent", agent,
-          "Reply with exactly: ok"], { timeout: 120000 },
+        execFile("opencode", ["run", prompt], { timeout: 180000, cwd: repoDir },
           (err, stdout, stderr) => resolve({ err, stdout: String(stdout || ""), stderr: String(stderr || "") }));
       });
       const ms = Date.now() - t0;
-      (raw.scouts ||= {})[agent] = { ms, out: r.stdout.slice(0, 200) };
-      if (r.err) return { status: "fail", got: r.stderr.slice(0, 200) || String(r.err.message) };
-      return { status: /ok/i.test(r.stdout) ? "pass" : "warn",
-        got: `${ms}ms — ${r.stdout.slice(0, 80).replace(/\n/g, " ")}` };
+      (raw.scouts ||= {})[agent] = { ms, out: r.stdout.slice(-300) };
+      if (r.err) return { status: "fail", got: (r.stderr || String(r.err.message)).slice(0, 200) };
+      const ok = /#\s|Qwen Parent|heading/i.test(r.stdout);
+      return { status: ok ? "pass" : "warn", got: `${(ms / 1000).toFixed(1)}s — ${r.stdout.slice(-120).replace(/\s+/g, " ")}` };
     });
   }
+  const kvAfter = await scoutQuotaSnapshot();
+  if (kvBefore && kvAfter) {
+    await check("scouts", "quota ledger ticked for remote calls", () => {
+      const dz = kvAfter.zused - kvBefore.zused, dn = kvAfter.nused - kvBefore.nused;
+      raw.scouts = { ...(raw.scouts || {}), quotaDelta: { zen: dz, nim: dn } };
+      const ok = dz > 0 || dn > 0;
+      return { status: ok ? "pass" : "warn",
+        expected: "zen and/or nim usage +≥1 after remote fan-out",
+        got: `zen +${dz} · nim +${dn}`,
+        note: ok ? "free tiers really served the scouts" : "remotes may have been skipped by the parent" };
+    });
+  }
+}
+
+async function scoutQuotaSnapshot() {
+  const r = await new Promise((resolve) => {
+    execFile(CFG.zenBudget, ["--kv"], { timeout: 8000 },
+      (err, stdout) => resolve(err ? null : String(stdout || "")));
+  });
+  if (!r) return null;
+  const kv = {};
+  for (const m of r.matchAll(/([a-z]+)\s*=\s*(-?\d+)/g)) kv[m[1]] = parseInt(m[2], 10);
+  return kv;
 }
 
 // --------------------------------------------------------------- report ----
