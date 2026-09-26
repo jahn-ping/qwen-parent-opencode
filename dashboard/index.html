@@ -27,7 +27,7 @@
   .chip-srv.up { color: var(--green); border-color: #1d4423; }
   main { display: flex; gap: 10px; padding: 10px; flex: 1; min-height: 0;
          overflow-x: auto; overflow-y: hidden; }
-  .col { flex: 0 0 auto; width: calc((100% - 20px) / 3); min-width: 320px;
+  .col { flex: 0 0 auto; width: calc((100% - 30px) / 4); min-width: 320px;
          display: flex; flex-direction: column; gap: 10px; min-height: 0;
          overflow: auto; resize: horizontal; }
   .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
@@ -35,6 +35,12 @@
   .panel > h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
                 color: var(--dim); margin: 0; padding: 7px 12px; border-bottom: 1px solid var(--edge);
                 display: flex; align-items: center; gap: 8px; }
+  .zbtn { margin-left: auto; background: none; border: 1px solid var(--edge); color: var(--dim);
+          border-radius: 6px; padding: 1px 8px; cursor: pointer; font-size: 11px; font-family: var(--mono); }
+  .zbtn:hover { color: var(--blue); border-color: var(--blue); }
+  .panel.zoomed { position: fixed; inset: 10px; z-index: 100; width: auto !important;
+                  height: auto !important; max-height: none !important; resize: none; }
+  .panel.zoomed > .zbtn::after { content: " (esc)"; }
   .panelbody { padding: 10px 12px; overflow-y: auto; flex: 1; }
   /* agents */
   .tabbar { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 7px; margin-bottom: 8px;
@@ -140,17 +146,19 @@
 <main>
   <div class="col">
     <div class="panel" style="flex:1">
-      <h2>Agents <span class="meta" id="sess-count"></span></h2>
+      <h2>Agents <span class="meta" id="sess-count"></span>
+        <button class="zbtn" title="expand">⤢</button></h2>
       <div class="panelbody" id="agents">waiting for opencode servers…</div>
     </div>
   </div>
 
   <div class="col">
-    <div class="panel">
+    <div class="panel" style="flex:1">
       <h2>Throughput — ninfer
-        <span style="margin-left:auto">
+        <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
           <button class="rng" data-min="5">5m</button>
           <button class="rng on" data-min="15">15m</button>
+          <button class="zbtn" title="expand">⤢</button>
         </span>
       </h2>
       <div class="panelbody charts">
@@ -178,16 +186,20 @@
         <div class="src" id="nf-note" style="font-size:11px"></div>
       </div>
     </div>
+  </div>
 
-    <div class="panel" id="quotapanel" style="display:none">
-      <h2>Quota guard — MiMo ≥25% reserved · NIM until 429</h2>
+  <div class="col" id="quotacol" style="display:none">
+    <div class="panel" id="quotapanel" style="flex:1">
+      <h2>Quota guard — MiMo ≥25% reserved · NIM until 429
+        <button class="zbtn" title="expand">⤢</button></h2>
       <div class="panelbody" id="quotabody"></div>
     </div>
   </div>
 
   <div class="col">
     <div class="panel" id="panel-flow" style="flex:1">
-      <h2>Flow — events &amp; ▸ narration</h2>
+      <h2>Flow — events &amp; ▸ narration
+        <button class="zbtn" title="expand">⤢</button></h2>
       <div class="panelbody" id="ticker"></div>
     </div>
   </div>
@@ -196,10 +208,11 @@
 <div id="bottomrow">
   <div class="panel" id="panel-eng">
     <h2 id="engtitle">Engine — ninfer
-      <span style="margin-left:auto">
+      <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
         <button class="rng on" data-eng="all">all</button>
         <button class="rng" data-eng="perf">perf</button>
         <button class="rng" data-eng="warn">warn</button>
+        <button class="zbtn" title="expand">⤢</button>
       </span>
     </h2>
     <div class="panelbody" id="englog"></div>
@@ -428,9 +441,9 @@ function renderQuota(snap) {
   const q = snap.quota;
   $("quota-src").style.display = "";
   $("dot-q").classList.toggle("up", !!q.present);
-  const panel = $("quotapanel");
-  if (!q.present) { panel.style.display = "none"; panel.classList.remove("alert", "warnstate"); return; }
-  panel.style.display = "";
+  const col = $("quotacol"), panel = $("quotapanel");
+  if (!q.present) { col.style.display = "none"; panel.classList.remove("alert", "warnstate"); return; }
+  col.style.display = "";
   const kv = q.kv || {};
   $("quotabody").innerHTML =
     quotaRow("MiMo (opencode zen)", kv.zused ?? 0, kv.zbudget ?? 0, kv.ztrips ?? 0, kv.zbudget ?? 375, kv.zceil) +
@@ -541,10 +554,10 @@ function applySnapshot(snap) {
 }
 
 // --------------------------------------------------------- size memory --
-// persist user-dragged panel sizes across reloads
+// persist user-dragged panel sizes across reloads (skips zoomed panels)
 function initSizeMemory() {
   const cols = document.querySelectorAll("main > .col");
-  ["dash-c0", "dash-c1", "dash-c2"].forEach((k, i) => {
+  ["qc0", "qc1", "qc2", "qc3"].forEach((k, i) => {
     const v = localStorage.getItem(k);
     if (v && cols[i]) cols[i].style.width = v;
   });
@@ -558,16 +571,32 @@ function initSizeMemory() {
   const ro = new ResizeObserver((entries) => {
     for (const e of entries) {
       const i = [...cols].indexOf(e.target);
-      if (i >= 0) save(`dash-c${i}`, `${e.contentBoxSize?.[0]?.inlineSize ?? e.target.offsetWidth}px`);
+      if (i >= 0) save(`qc${i}`, `${e.contentBoxSize?.[0]?.inlineSize ?? e.target.offsetWidth}px`);
     }
   });
   cols.forEach((c) => ro.observe(c));
   new ResizeObserver((entries) => {
-    for (const e of entries)
+    for (const e of entries) {
+      if (e.target.classList.contains("zoomed")) return; // zoomed size is temporary
       save("dash-eng-h", `${e.contentBoxSize?.[0]?.blockSize ?? e.target.offsetHeight}px`);
+    }
   }).observe($("panel-eng"));
 }
 initSizeMemory();
+
+// ------------------------------------------------------------ panel zoom --
+document.querySelectorAll(".zbtn").forEach((btn) => btn.addEventListener("click", () => {
+  btn.closest(".panel").classList.toggle("zoomed");
+}));
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape")
+    document.querySelectorAll(".panel.zoomed").forEach((p) => p.classList.remove("zoomed"));
+});
+if (window.Notification && Notification.permission === "default") {
+  // ask once, lazily, on the first click — never nag
+  const ask = () => { Notification.requestPermission(); };
+  document.addEventListener("click", ask, { once: true });
+}
 
 function connect() {
   const es = new EventSource("/stream");
