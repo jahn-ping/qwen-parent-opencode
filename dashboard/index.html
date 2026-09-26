@@ -23,9 +23,12 @@
   .src { color: var(--dim); font-family: var(--mono); font-size: 12px; }
   main { display: grid; grid-template-columns: minmax(380px, 1fr) 420px;
          gap: 10px; padding: 10px; flex: 1; min-height: 0; }
-  .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0;
+         overflow-y: auto; } /* min-height:0 lets panel bodies scroll instead of the
+                                column growing past the viewport; overflow is the
+                                safety net for very short windows */
   .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
-           overflow: hidden; display: flex; flex-direction: column; }
+           overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
   .panel > h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
                 color: var(--dim); margin: 0; padding: 7px 12px; border-bottom: 1px solid var(--edge); }
   .panelbody { padding: 10px 12px; overflow-y: auto; flex: 1; }
@@ -85,6 +88,11 @@
   #ticker .line .kind { color: var(--blue); }
   footer { padding: 4px 14px; color: var(--dim); font-size: 11px; font-family: var(--mono);
            border-top: 1px solid var(--edge); background: var(--panel); }
+  ::-webkit-scrollbar { width: 9px; height: 9px; }
+  ::-webkit-scrollbar-thumb { background: #30363d; border-radius: 5px; }
+  ::-webkit-scrollbar-thumb:hover { background: #3d444d; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  scrollbar-width: thin; scrollbar-color: #30363d transparent;
 </style>
 </head>
 <body>
