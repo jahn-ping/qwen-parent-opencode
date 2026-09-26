@@ -108,37 +108,39 @@ Live-visibility cheatsheet:
 
 ## Live dashboard — the "watch everything" window
 
-A zero-dependency observability page (LM Studio server-view style): the
-agent tree with live thinking tails, pp/tg throughput charts with the
-verified V100 reference bands, lane/queue gauges, the quota-guard bars,
-and a scrolling ticker of every event plus the parent's ▸ narration.
-
-Start the TUI with the server port pinned, then run the dashboard:
+Zero-dependency observability (LM Studio server-view style). **v2 requires
+nothing special from your working session**: the dashboard auto-discovers
+every opencode server on the box — the desktop app's random-port server, any
+TUI, headless runs — every 15 seconds, picks up server passwords from the
+process environment, and merges all their sessions into one view. Work in
+whatever session you like; the dashboard follows it.
 
 ```bash
-opencode --hostname 127.0.0.1 --port 4096     # your normal TUI, port pinned
-node dashboard/dashboard.js                    # from this repo, any terminal
-# → open http://127.0.0.1:8787
+node dashboard/dashboard.js     # from this repo, any terminal (after git pull)
+# → open http://127.0.0.1:8787  (or via the SSH tunnel from another machine:
+#   ssh -f -N -L 8787:127.0.0.1:8787 boxy@<box-ip>)
 ```
 
-What you see:
+Panels:
 
-- **Agents panel** — the parent session and every scout the task tool
-  spawns, with status chips (waiting/running), the model each one runs on,
-  and a live tail of its current reasoning (purple), text, or tool call.
-  This is the "what is it thinking on / what's waiting" view.
-- **Throughput panel** — ninfer prefill (pp) and decode (tg) tok/s over the
-  last 15 minutes, drawn from `/metrics` counter deltas (works even though
-  the rate gauges decay to zero when idle), with the verified 205–614 pp /
-  27–59 tg bands as dashed guide zones. Lane pips show the 2 slots
-  (green = decoding, yellow = prefilling); queue depth from
-  `requests_deferred`.
-- **Quota panel** — MiMo used vs the 375 stop line (the 25% reserve stays
-  visibly untouched) and NIM used until its first 429 marks it DEAD; reads
-  `~/scripts/zen-budget.sh --kv` every 30s. Panel hides if the script is
-  absent.
-- **Flow ticker** — every opencode bus event, with the parent's
-  `▸ FANOUT / ▸ MERGE / ▸ THROTTLED` narration lines highlighted green.
+- **Agents** — every harness session (all servers merged): parent + scout
+  children, per-session token counts (in/out/think), project directory,
+  status chips, model, and a live scrollable tail of current
+  reasoning/text/tool call.
+- **Throughput** — ninfer pp / tg / **TTFT** charts over a 5m or 15m window
+  (rates parsed from ninfer's own throughput logs; reference bands dashed),
+  plus gauges: last TTFT, **MTP draft-acceptance %**, queue/busy, and
+  aggregate session tokens.
+- **Quota** — MiMo vs the 375 stop line (25% reserve visibly untouched) and
+  NIM until its first 429 (DEAD marker); reads `zen-budget.sh --kv` / 30s.
+- **Flow** — coalesced bus events with the parent's ▸ narration highlighted.
+- **Engine** — full-width ninfer `docker logs -f` stream (auto-reattaching),
+  horizontal scroll for the long `req#N done` lines; synthetic telemetry
+  lines when docker isn't reachable.
+
+Rows are resizable (drag panel edges / column divider). All sources degrade
+independently. Set `DASH_HOST=0.0.0.0` to expose it on the LAN (default is
+loopback-only; use the tunnel for remote viewing).
 
 Notes: if `OPENCODE_SERVER_PASSWORD` is set, export it before starting the
 dashboard (it forwards basic auth). If ninfer runs without `--metrics`, the

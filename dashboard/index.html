@@ -15,27 +15,31 @@
          font: 13px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif;
          height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
   header { display: flex; align-items: center; gap: 14px; padding: 8px 14px;
-           border-bottom: 1px solid var(--edge); background: var(--panel); }
+           border-bottom: 1px solid var(--edge); background: var(--panel); flex-wrap: wrap; }
   header h1 { font-size: 14px; margin: 0; letter-spacing: .3px; }
   .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red);
          display: inline-block; margin-right: 5px; }
   .dot.up { background: var(--green); }
   .src { color: var(--dim); font-family: var(--mono); font-size: 12px; }
+  #srv-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .chip-srv { font-family: var(--mono); font-size: 11px; color: var(--dim);
+              border: 1px solid var(--edge); border-radius: 10px; padding: 2px 9px; }
+  .chip-srv.up { color: var(--green); border-color: #1d4423; }
   main { display: grid; grid-template-columns: minmax(380px, 1fr) 420px;
          gap: 10px; padding: 10px; flex: 1; min-height: 0; }
   .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; min-height: 0;
-         overflow-y: auto; } /* min-height:0 lets panel bodies scroll instead of the
-                                column growing past the viewport; overflow is the
-                                safety net for very short windows */
+         overflow-y: auto; }
   main > .col:last-child { resize: horizontal; min-width: 340px; max-width: 75vw; }
   .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
            overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
   .panel > h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
-                color: var(--dim); margin: 0; padding: 7px 12px; border-bottom: 1px solid var(--edge); }
+                color: var(--dim); margin: 0; padding: 7px 12px; border-bottom: 1px solid var(--edge);
+                display: flex; align-items: center; gap: 8px; }
   .panelbody { padding: 10px 12px; overflow-y: auto; flex: 1; }
   /* agents */
   .sess { margin-bottom: 12px; }
   .sess > .name { font-weight: 600; color: var(--blue); font-family: var(--mono); font-size: 12px; }
+  .meta { color: var(--dim); font-size: 10.5px; font-family: var(--mono); }
   .agent { border: 1px solid var(--edge); border-radius: 6px; padding: 7px 9px; margin-top: 6px;
            background: #0d1117; }
   .agent .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
@@ -46,6 +50,8 @@
   .chip.waiting, .chip.pending { color: var(--yellow); border-color: var(--yellow); }
   .chip.error { color: var(--red); border-color: var(--red); }
   .model { color: var(--purple); font-family: var(--mono); font-size: 11px; }
+  .toks { color: var(--dim); font-family: var(--mono); font-size: 10.5px; }
+  .toks b { color: var(--fg); font-weight: 600; }
   .tail { margin-top: 5px; font-family: var(--mono); font-size: 11.5px; color: var(--dim);
           white-space: pre-wrap; word-break: break-word; max-height: 9em; overflow-y: auto;
           border-left: 2px solid var(--edge); padding-left: 7px; }
@@ -54,16 +60,20 @@
   .child { margin-left: 16px; }
   /* charts */
   .charts { display: flex; flex-direction: column; gap: 8px; }
+  .rangerow { display: flex; gap: 6px; align-items: center; }
+  .rng { font-family: var(--mono); font-size: 10.5px; color: var(--dim); cursor: pointer;
+         border: 1px solid var(--edge); border-radius: 9px; padding: 1px 8px; background: none; }
+  .rng.on { color: var(--blue); border-color: var(--blue); }
   .chartbox { background: #0d1117; border: 1px solid var(--edge); border-radius: 6px; padding: 6px; }
   .chartbox .lbl { display: flex; justify-content: space-between; font-family: var(--mono);
                    font-size: 11px; color: var(--dim); margin-bottom: 3px; }
   .chartbox .val { color: var(--green); }
-  canvas { width: 100%; height: 92px; display: block; }
-  .gauges { display: flex; gap: 8px; font-family: var(--mono); font-size: 12px; }
-  .gauge { flex: 1; background: #0d1117; border: 1px solid var(--edge); border-radius: 6px;
-           padding: 6px 8px; }
-  .gauge .k { color: var(--dim); font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; }
-  .gauge .v { font-size: 15px; margin-top: 1px; }
+  canvas { width: 100%; height: 84px; display: block; }
+  .gauges { display: flex; gap: 6px; font-family: var(--mono); font-size: 12px; flex-wrap: wrap; }
+  .gauge { flex: 1; min-width: 76px; background: #0d1117; border: 1px solid var(--edge);
+           border-radius: 6px; padding: 5px 7px; }
+  .gauge .k { color: var(--dim); font-size: 9.5px; text-transform: uppercase; letter-spacing: .5px; }
+  .gauge .v { font-size: 13px; margin-top: 1px; }
   .lane { display: inline-block; width: 12px; height: 12px; border-radius: 3px;
           background: var(--edge); margin-right: 3px; vertical-align: -1px; }
   .lane.on { background: var(--green); }
@@ -78,7 +88,7 @@
   .bar.warn .fill { background: linear-gradient(90deg, #9e6a03, #d29922); }
   .bar.dead .fill { background: linear-gradient(90deg, #b62324, #f85149); }
   .bar .stop { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--red); }
-  /* flow + engine log: stacked full-width rows; engine lines scroll horizontally */
+  /* bottom rows */
   #bottomrow { display: flex; flex-direction: column; gap: 10px; margin: 0 10px 10px; flex: none; }
   #bottomrow .panel { min-height: 0; }
   #panel-flow { height: 150px; min-height: 70px; max-height: 70vh; resize: vertical; }
@@ -110,23 +120,27 @@
 <body>
 <header>
   <h1>qwen-parent · live</h1>
-  <span class="src"><span id="dot-oc" class="dot"></span>opencode</span>
+  <span class="src" id="srv-chips">discovering opencode servers…</span>
   <span class="src"><span id="dot-nf" class="dot"></span>ninfer</span>
   <span class="src" id="quota-src" style="display:none"><span id="dot-q" class="dot"></span>quota-guard</span>
-  <span class="src" id="oc-note"></span>
 </header>
 
 <main>
   <div class="col">
     <div class="panel" style="flex:1">
-      <h2>Agents — parent &amp; scouts</h2>
-      <div class="panelbody" id="agents">waiting for opencode server…</div>
+      <h2>Agents — every harness session</h2>
+      <div class="panelbody" id="agents">waiting for opencode servers…</div>
     </div>
   </div>
 
   <div class="col">
     <div class="panel">
-      <h2>Throughput — ninfer (pp / tg)</h2>
+      <h2>Throughput — ninfer
+        <span style="margin-left:auto">
+          <button class="rng" data-min="5">5m</button>
+          <button class="rng on" data-min="15">15m</button>
+        </span>
+      </h2>
       <div class="panelbody charts">
         <div class="chartbox">
           <div class="lbl"><span>PP prefill tok/s</span><span class="val" id="ppv">–</span></div>
@@ -136,10 +150,15 @@
           <div class="lbl"><span>TG decode tok/s</span><span class="val" id="tgv">–</span></div>
           <canvas id="tgchart"></canvas>
         </div>
+        <div class="chartbox">
+          <div class="lbl"><span>TTFT ms (per request)</span><span class="val" id="ttftv">–</span></div>
+          <canvas id="ttftchart"></canvas>
+        </div>
         <div class="gauges">
-          <div class="gauge"><div class="k">Lanes (2)</div><div class="v" id="lanes">– –</div></div>
+          <div class="gauge"><div class="k">TTFT</div><div class="v" id="ttftg">–</div></div>
+          <div class="gauge"><div class="k">MTP acc</div><div class="v" id="mtpg">–</div></div>
           <div class="gauge"><div class="k">Queue</div><div class="v" id="queue">–</div></div>
-          <div class="gauge"><div class="k">Busy</div><div class="v" id="busy">–</div></div>
+          <div class="gauge"><div class="k">Tokens Σ</div><div class="v" id="tokv">–</div></div>
         </div>
         <div class="src" id="nf-note" style="font-size:11px"></div>
       </div>
@@ -169,22 +188,33 @@
 "use strict";
 const $ = (id) => document.getElementById(id);
 let CFG = null;
-let lastSnap = null;
+let RANGE_MIN = 15;
 
 const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
 
-function ts(t) {
-  const d = new Date(t);
-  return d.toTimeString().slice(0, 8);
-}
-
+function ts(t) { return new Date(t).toTimeString().slice(0, 8); }
 function ago(t) {
   if (!t) return "";
   const s = Math.max(0, (Date.now() - t) / 1000);
   if (s < 90) return Math.round(s) + "s ago";
   if (s < 5400) return Math.round(s / 60) + "m ago";
   return Math.round(s / 3600) + "h ago";
+}
+function fmtK(n) {
+  if (n == null) return "–";
+  if (n < 1000) return String(n);
+  if (n < 1e6) return (n / 1e3).toFixed(1) + "k";
+  return (n / 1e6).toFixed(2) + "M";
+}
+
+// ---------------------------------------------------------------- servers --
+function renderServers(snap) {
+  const el = $("srv-chips");
+  const list = snap.servers || [];
+  if (!list.length) { el.textContent = "no opencode servers found yet — start any session"; return; }
+  el.innerHTML = list.map((s) =>
+    `<span class="chip-srv ${s.up ? "up" : ""}">:${s.port} · ${s.sessions} sess</span>`).join("");
 }
 
 // ---------------------------------------------------------------- agents --
@@ -194,13 +224,15 @@ const MODEL_HINTS = [
   [/qwen|3\.8|ninfer|build|plan/i, "ninfer/qwen3.8-27b (local)"],
 ];
 
-function agentCard(sess, tail, isChild) {
+function agentCard(sess, tail, isChild, multi) {
   const agent = (tail && tail.agent) || sess.agent || (isChild ? "scout" : "parent");
   const status = tail && tail.status ? String(tail.status) : "";
   const model = (MODEL_HINTS.find(([re]) => re.test(agent)) || [null, agent])[1];
   const t = tail || {};
   const tailText = t.text ? esc(t.text) : "";
   const tailCls = t.label === "thinking" ? "thinking" : (t.label || "").startsWith("tool") ? "tool" : "";
+  const tk = sess.tokens;
+  const tokStr = tk ? `<span class="toks">tok <b>${fmtK(tk.input)}</b>in · <b>${fmtK(tk.output)}</b>out · <b>${fmtK(tk.reasoning)}</b>think</span>` : "";
   return `<div class="agent${isChild ? " child" : ""}">
     <div class="row">
       <span class="aname">${esc(agent)}</span>
@@ -208,6 +240,7 @@ function agentCard(sess, tail, isChild) {
       <span class="model">${esc(model)}</span>
       <span class="src">${ago(sess.updated)}</span>
     </div>
+    <div class="row">${tokStr}${multi ? `<span class="meta">:${sess.srv}</span>` : ""}</div>
     ${tailText ? `<div class="tail ${tailCls}">${tailText}</div>` : ""}
   </div>`;
 }
@@ -216,16 +249,17 @@ function renderAgents(snap) {
   const tree = snap.oc.tree || [];
   const tails = snap.oc.tails || {};
   const el = $("agents");
+  const multi = (snap.servers || []).filter((s) => s.up).length > 1;
   if (!tree.length) { el.textContent = snap.oc.up
-    ? "no sessions yet — start one in the TUI" : "opencode server down"; return; }
+    ? "no sessions yet — start one anywhere in the harness" : "no opencode servers reachable"; return; }
   const html = tree.map((s) =>
     `<div class="sess">
       <div class="row"><span class="name">${esc(s.title)}</span>
+      ${s.dir ? `<span class="meta" title="${esc(s.dir)}">${esc(s.dir)}</span>` : ""}
       <span class="src">${ago(s.updated)}</span></div>
-      ${agentCard(s, tails[s.id], false)}
-      ${(s.children || []).map((c) => agentCard(c, tails[c.id], true)).join("")}
+      ${agentCard(s, tails[s.id], false, multi)}
+      ${(s.children || []).map((c) => agentCard(c, tails[c.id], true, multi)).join("")}
     </div>`).join("");
-  // preserve scroll positions across the 1 Hz re-render (panel + each tail box)
   const bodyScroll = el.scrollTop;
   const tailScrolls = [...el.querySelectorAll(".tail")].map((t) => t.scrollTop);
   if (el.dataset.sig !== html) {
@@ -239,22 +273,20 @@ function renderAgents(snap) {
 }
 
 // ---------------------------------------------------------------- charts --
-
 function drawChart(canvas, series, band, color) {
   const dpr = window.devicePixelRatio || 1;
-  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 92;
+  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 84;
   if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
   const ctx = canvas.getContext("2d");
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, w, h);
-  const now = Date.now(), span = 15 * 60 * 1000;
+  const now = Date.now(), span = RANGE_MIN * 60 * 1000;
   let maxV = 10;
-  for (const p of series) maxV = Math.max(maxV, p.v);
+  for (const p of series) if (p.t > now - span) maxV = Math.max(maxV, p.v);
   if (band) maxV = Math.max(maxV, band[1] * 1.15);
   const X = (t) => ((t - (now - span)) / span) * w;
   const Y = (v) => h - 4 - (v / maxV) * (h - 10);
 
-  // grid + reference band (verified perf zone)
   ctx.strokeStyle = "#21262d"; ctx.fillStyle = "rgba(88,166,255,0.06)";
   ctx.lineWidth = 1;
   for (let i = 1; i < 4; i++) { const y = (h / 4) * i; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
@@ -265,15 +297,16 @@ function drawChart(canvas, series, band, color) {
     for (const b of band) { ctx.beginPath(); ctx.moveTo(0, Y(b)); ctx.lineTo(w, Y(b)); ctx.stroke(); }
     ctx.setLineDash([]);
   }
-  if (series.length > 1) {
+  const vis = series.filter((p) => p.t > now - span);
+  if (vis.length > 1) {
     ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.beginPath();
     let started = false;
-    for (const p of series) {
+    for (const p of vis) {
       const x = X(p.t), y = Y(p.v);
       if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
     }
     ctx.stroke();
-    ctx.lineTo(X(now), h); ctx.lineTo(X(series[0].t), h); ctx.closePath();
+    ctx.lineTo(X(now), h); ctx.lineTo(X(vis[0].t), h); ctx.closePath();
     ctx.fillStyle = "rgba(63,185,80,0.10)"; ctx.fill();
   }
 }
@@ -282,36 +315,35 @@ function renderCharts(snap) {
   const nf = snap.ninfer;
   $("ppv").textContent = nf.pp ? nf.pp.toFixed(0) : "–";
   $("tgv").textContent = nf.tg ? nf.tg.toFixed(0) : "–";
+  $("ttftv").textContent = nf.ttft != null ? nf.ttft + " ms" : "–";
   drawChart($("ppchart"), nf.ppSeries || [], (CFG && CFG.refs.ppBand) || null, "#58a6ff");
   drawChart($("tgchart"), nf.tgSeries || [], (CFG && CFG.refs.tgBand) || null, "#3fb950");
+  drawChart($("ttftchart"), nf.ttftSeries || [], (CFG && CFG.refs.ttftBand) || null, "#bc8cff");
 
+  $("ttftg").textContent = nf.ttft != null ? nf.ttft + "ms" : "–";
+  $("mtpg").textContent = nf.mtp != null ? nf.mtp.toFixed(0) + "%" : "–";
   const slots = nf.slots || [];
-  if (slots.length) {
-    $("lanes").innerHTML = slots.slice(0, 4).map((s) => {
-      let cls = "";
-      if (s.is_processing) cls = (s.n_prompt_tokens_processed < s.n_prompt_tokens) ? "pf" : "on";
-      return `<span class="lane ${cls}" title="lane ${s.id}"></span>`;
-    }).join("") || "–";
-  } else { $("lanes").textContent = "–"; }
-  $("queue").textContent = nf.deferred != null ? nf.deferred : "–";
-  $("busy").textContent = nf.processing != null ? nf.processing : "–";
+  $("queue").textContent = (nf.deferred != null ? nf.deferred : "–") + " / " +
+                           (nf.processing != null ? nf.processing : "–");
+  const tk = (snap.oc || {}).tokens;
+  $("tokv").innerHTML = tk ? `<b>${fmtK(tk.input)}</b>in <b>${fmtK(tk.output)}</b>out` : "–";
+
   $("nf-note").textContent = nf.up
     ? (nf.rateSource === "docker-logs"
-        ? "exact rates parsed from ninfer's own throughput logs (5s windows)"
+        ? "exact rates parsed from ninfer's own throughput logs"
         : nf.rateSource === "metrics"
-        ? `exact rates from /metrics (${nf.metricsPrefix}… counter deltas)`
+        ? "exact rates from /metrics counter deltas"
         : nf.rateSource === "slots"
-          ? "rates from /slots lane deltas — add --metrics to ninfer for exact server-wide counters"
-          : "idle — no lane processing")
+          ? "rates from /slots lane deltas"
+          : "idle — no requests in the current window")
     : "ninfer :8080 unreachable";
 }
 
 // ----------------------------------------------------------------- quota --
-
 function quotaRow(name, used, budget, trips, stopLine, ceil) {
   const dead = trips > 0;
   const warn = !dead && stopLine && used >= stopLine * 0.8;
-  const total = ceil || (stopLine ? Math.round(stopLine / 0.75) : budget); // 375 stop on 500 ceiling = 25% held back
+  const total = ceil || (stopLine ? Math.round(stopLine / 0.75) : budget);
   const width = total ? Math.min(100, (used / total) * 100) : 0;
   const stopPct = total ? (stopLine / total) * 100 : 75;
   return `<div class="qrow">
@@ -335,8 +367,7 @@ function renderQuota(snap) {
     quotaRow("NVIDIA NIM", kv.nused ?? 0, kv.nbudget ?? 0, kv.ntrips ?? 0, null, kv.nceil);
 }
 
-// --------------------------------------------------------------- ticker --
-
+// ------------------------------------------------------ ticker + engine --
 const tickerLines = [];
 function pushTicker(t, html, cls) {
   tickerLines.push({ t, html, cls });
@@ -348,8 +379,6 @@ function renderTicker() {
   const el = $("ticker").parentElement;
   el.scrollTop = el.scrollHeight;
 }
-
-// ------------------------------------------------------------ engine log --
 
 const engLines = [];
 function pushEng(rec) {
@@ -364,28 +393,7 @@ function renderEng() {
   if (stick) el.scrollTop = el.scrollHeight;
 }
 
-// --------------------------------------------------------------- wiring --
-
-function applySnapshot(snap) {
-  lastSnap = snap;
-  $("dot-oc").classList.toggle("up", !!snap.oc.up);
-  $("dot-nf").classList.toggle("up", !!snap.ninfer.up);
-  renderAgents(snap);
-  renderCharts(snap);
-  renderQuota(snap);
-  $("engtitle").textContent = snap.dockerLogs
-    ? "Engine — ninfer (docker logs)" : "Engine — ninfer (telemetry)";
-  $("foot").textContent =
-    `opencode ${snap.oc.up ? "up" : "down"} · ninfer ${snap.ninfer.up ? "up" : "down"}` +
-    ` · quota ${snap.quota.present ? "up" : "absent"}` +
-    ` · engine ${snap.dockerLogs ? "docker" : "synthetic"} · updated ${ts(snap.t)}`;
-}
-
 const NARR = /[▸▲]|\[QUOTA\]|FANOUT|MERGE|THROTTLED/;
-
-// One line per forwarded event (the bridge coalesces the per-token flood).
-// Narration (▸ / [QUOTA] lines) is shown as the agent's actual text; raw
-// bus events stay dim so the two never fight for the panel.
 function onOcEvent(ev) {
   const { t, kind, summary, text } = ev;
   const body = (text || "").trim();
@@ -398,14 +406,35 @@ function onOcEvent(ev) {
   }
 }
 
+// --------------------------------------------------------------- wiring --
+document.querySelectorAll(".rng").forEach((b) => b.addEventListener("click", () => {
+  RANGE_MIN = parseInt(b.dataset.min, 10);
+  document.querySelectorAll(".rng").forEach((x) => x.classList.toggle("on", x === b));
+  if (lastSnap) renderCharts(lastSnap);
+}));
+
+function applySnapshot(snap) {
+  window.lastSnap = snap;
+  renderServers(snap);
+  renderAgents(snap);
+  renderCharts(snap);
+  renderQuota(snap);
+  $("engtitle").textContent = snap.dockerLogs
+    ? "Engine — ninfer (docker logs)" : "Engine — ninfer (telemetry)";
+  $("foot").textContent =
+    `opencode servers: ${(snap.servers || []).filter((s) => s.up).length}/${(snap.servers || []).length} up` +
+    ` · ninfer ${snap.ninfer.up ? "up" : "down"}` +
+    ` · quota ${snap.quota.present ? "up" : "absent"}` +
+    ` · engine ${snap.dockerLogs ? "docker" : "synthetic"} · ${ts(snap.t)}`;
+}
+
 function connect() {
   const es = new EventSource("/stream");
   es.onmessage = (m) => {
     let msg; try { msg = JSON.parse(m.data); } catch { return; }
-    if (msg.type === "hello") { CFG = msg.cfg; $("oc-note").textContent = ""; }
+    if (msg.type === "hello") CFG = msg.cfg;
     else if (msg.type === "snapshot") {
       applySnapshot(msg.data);
-      // backfill the ticker + engine log once so a fresh page isn't empty
       if (!tickerLines.length && msg.data.events) {
         for (const e of msg.data.events.slice(-60)) onOcEvent(e);
         renderTicker();
