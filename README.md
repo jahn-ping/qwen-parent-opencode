@@ -168,6 +168,13 @@ The box runs: **openspec** (`/opsx:*`), **no-mistakes**, **opencode-goal**,
   until 429), up to 3–4 parallel remote scouts; scout-local is solo and
   last; total local concurrency caps at 2 (parent + one scout = both ninfer
   lanes). If both free tiers trip, everything collapses to the parent.
+- **MiMo has a client rule**: the Zen free tier only serves calls made from
+  within OpenCode (TUI/desktop). Headless `opencode run` sessions get
+  rejected with "free tier can only be used from within OpenCode" — so
+  MiMo fan-out works in your normal TUI workflow, but headless/bench
+  fan-out should expect scout-nim and scout-local to carry it. (Heads-up:
+  the `small_model` — also MiMo — names every new session, so even fully
+  local headless runs tick the zen ledger by 1–2 calls.)
 
 If a plugin registers its own agent carrying a remote model, discover and
 pin it (same-name override in `opencode.json`, or disable it outright):

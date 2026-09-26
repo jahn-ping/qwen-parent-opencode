@@ -398,25 +398,37 @@ async function sectionScouts() {
   }
   // Subagents are task-tool-only (opencode run --agent <subagent> falls back
   // to the primary) — so the honest test is delegating THROUGH the parent,
-  // exactly like production fan-out. The repo's README.md is the target file.
+  // exactly like production fan-out. KNOWN ZEN RULE: scout-mimo is rejected
+  // headless ("free tier can only be used from within OpenCode") — MiMo
+  // fan-out only works from the TUI/desktop; a warn here is expected.
   const repoDir = path.join(__dirname, "..");
-  const agents = ["scout-mimo", "scout-nim", "scout-local"];
+  const agents = ["scout-nim", "scout-local", "scout-mimo"];
   const kvBefore = await scoutQuotaSnapshot();
   for (const agent of agents) {
     await check("scouts", `fan-out via parent → ${agent}`, async () => {
       const prompt = `Use the task tool to delegate to the ${agent} subagent. ` +
-        `Scout task: read README.md in the current directory and return its first ` +
-        `heading as a single line. Then report the scout's exact reply to me.`;
+        `Scout task: read AGENTS.md in the current directory and return its ` +
+        `section 1 title as a single line. Then report the scout's exact reply to me.`;
       const t0 = Date.now();
       const r = await new Promise((resolve) => {
-        execFile("opencode", ["run", prompt], { timeout: 180000, cwd: repoDir },
+        execFile("opencode", ["run", "--agent", "build", prompt],
+          { timeout: 180000, cwd: repoDir, stdio: ["ignore", "pipe", "pipe"] },
           (err, stdout, stderr) => resolve({ err, stdout: String(stdout || ""), stderr: String(stderr || "") }));
       });
       const ms = Date.now() - t0;
-      (raw.scouts ||= {})[agent] = { ms, out: r.stdout.slice(-300) };
-      if (r.err) return { status: "fail", got: (r.stderr || String(r.err.message)).slice(0, 200) };
-      const ok = /#\s|Qwen Parent|heading/i.test(r.stdout);
-      return { status: ok ? "pass" : "warn", got: `${(ms / 1000).toFixed(1)}s — ${r.stdout.slice(-120).replace(/\s+/g, " ")}` };
+      const out = r.stdout + "\n" + r.stderr;
+      (raw.scouts ||= {})[agent] = { ms, out: out.slice(-300) };
+      if (r.err && !out) return { status: "fail",
+        got: `${(ms / 1000).toFixed(1)}s — ${String(r.err.message).slice(0, 150)}` };
+      if (/can only be used from within OpenCode/i.test(out)) {
+        return { status: "warn", expected: "MiMo serves the scout call",
+          got: `${(ms / 1000).toFixed(1)}s — Zen rejected headless client`,
+          note: "documented: MiMo fan-out works only from the TUI/desktop, not headless runs" };
+      }
+      if (r.err) return { status: "fail", got: `${(ms / 1000).toFixed(1)}s — ${out.slice(-150)}` };
+      const ok = /Hierarchy|never violate/i.test(out);
+      return { status: ok ? "pass" : "warn",
+        got: `${(ms / 1000).toFixed(1)}s — ${out.slice(-120).replace(/\s+/g, " ")}` };
     });
   }
   const kvAfter = await scoutQuotaSnapshot();
