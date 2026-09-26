@@ -462,6 +462,23 @@ function writeReport() {
   const dir = path.join(__dirname, "..", "reports");
   fs.mkdirSync(dir, { recursive: true });
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+
+  // trend history: append this run's key numbers, compare with the last run
+  const histFile = path.join(dir, "bench-history.jsonl");
+  let prev = null;
+  try {
+    const lines = fs.readFileSync(histFile, "utf8").trim().split("\n").filter(Boolean);
+    prev = JSON.parse(lines[lines.length - 1]);
+  } catch { /* first run or unreadable */ }
+  const cur = {
+    ts: new Date().toISOString(),
+    decodeTps: raw.bench?.decodeShort?.tokPerSec ?? null,
+    prefillTps: raw.bench?.prefillLong?.ppTokPerSec ?? null,
+    agg2Tps: raw.bench?.concurrent2?.aggregateTokPerSec ?? null,
+    fails: results.filter((r) => r.status === "fail").length,
+  };
+  fs.appendFileSync(histFile, JSON.stringify(cur) + "\n");
+
   const json = { generatedAt: new Date().toISOString(), cfg: { ocBase: CFG.ocBase,
     nBase: CFG.nBase, dashBase: CFG.dashBase, scouts: CFG.scouts }, results, raw };
   fs.writeFileSync(path.join(dir, `bug-report-${ts}.json`), JSON.stringify(json, null, 2));
@@ -479,6 +496,18 @@ function writeReport() {
     if (r.section !== sec) { sec = r.section; md += `\n## ${sec}\n\n`; }
     md += `- ${icon[r.status] || "·"} **${r.name}** — ${r.got ?? ""}` +
       (r.expected ? ` _(expected: ${r.expected})_` : "") + (r.note ? ` — ${r.note}` : "") + "\n";
+  }
+  if (prev && cur.decodeTps && prev.decodeTps) {
+    const row = (label, nowVal, prevVal, goodUp) => {
+      if (!nowVal || !prevVal) return `- ${label}: ${nowVal ?? "–"} (prev ${prevVal ?? "–"})`;
+      const d = ((nowVal - prevVal) / prevVal) * 100;
+      const arrow = Math.abs(d) < 3 ? "→" : (d > 0) === !!goodUp ? "▲" : "▼";
+      return `- ${label}: ${typeof nowVal === "number" ? nowVal.toFixed(1) : nowVal} ${arrow} ${d >= 0 ? "+" : ""}${d.toFixed(1)}% vs previous (${prevVal.toFixed(1)})`;
+    };
+    md += `\n## Trend vs previous run (${prev.ts})\n\n` +
+      row("decode tok/s", cur.decodeTps, prev.decodeTps, true) + "\n" +
+      row("prefill tok/s", cur.prefillTps, prev.prefillTps, true) + "\n" +
+      row("2-lane aggregate tok/s", cur.agg2Tps, prev.agg2Tps, true) + "\n";
   }
   md += `\n---\nAttach BOTH this file and the matching .json when reporting back.\n`;
   const mdPath = path.join(dir, `bug-report-${ts}.md`);

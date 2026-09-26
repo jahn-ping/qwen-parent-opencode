@@ -96,6 +96,12 @@
   .bar.warn .fill { background: linear-gradient(90deg, #9e6a03, #d29922); }
   .bar.dead .fill { background: linear-gradient(90deg, #b62324, #f85149); }
   .bar .stop { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--red); }
+  .panel.alert { border-color: var(--red); animation: alertpulse 1.2s ease-in-out infinite; }
+  .panel.warnstate { border-color: var(--yellow); }
+  @keyframes alertpulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(248,81,73,0); }
+    50% { box-shadow: 0 0 14px 2px rgba(248,81,73,0.45); }
+  }
   /* engine log: full-width row below the three columns */
   #bottomrow { display: flex; flex-direction: column; margin: 0 10px 10px; flex: none; }
   #bottomrow .panel { min-height: 0; }
@@ -162,8 +168,11 @@
         </div>
         <div class="gauges">
           <div class="gauge"><div class="k">TTFT</div><div class="v" id="ttftg">–</div></div>
-          <div class="gauge"><div class="k">MTP acc</div><div class="v" id="mtpg">–</div></div>
           <div class="gauge"><div class="k">Queue</div><div class="v" id="queue">–</div></div>
+          <div class="gauge" style="flex:1.6"><div class="k">MTP acc</div>
+            <div class="v" id="mtpg" style="display:inline-block;margin-right:6px">–</div>
+            <canvas id="mtpspark" style="width:70px;height:18px;display:inline-block;vertical-align:middle"></canvas>
+          </div>
           <div class="gauge"><div class="k">Tokens Σ</div><div class="v" id="tokv">–</div></div>
         </div>
         <div class="src" id="nf-note" style="font-size:11px"></div>
@@ -186,7 +195,13 @@
 
 <div id="bottomrow">
   <div class="panel" id="panel-eng">
-    <h2 id="engtitle">Engine — ninfer</h2>
+    <h2 id="engtitle">Engine — ninfer
+      <span style="margin-left:auto">
+        <button class="rng on" data-eng="all">all</button>
+        <button class="rng" data-eng="perf">perf</button>
+        <button class="rng" data-eng="warn">warn</button>
+      </span>
+    </h2>
     <div class="panelbody" id="englog"></div>
   </div>
 </div>
@@ -353,6 +368,27 @@ function renderCharts(snap) {
   drawChart($("tgchart"), nf.tgSeries || [], (CFG && CFG.refs.tgBand) || null, "#3fb950");
   drawChart($("ttftchart"), nf.ttftSeries || [], (CFG && CFG.refs.ttftBand) || null, "#bc8cff");
 
+  // MTP sparkline: last 60 acceptance samples, fixed 0-100 scale, 50% midline
+  const sp = $("mtpspark"), series = nf.mtpSeries || [];
+  const dpr = window.devicePixelRatio || 1;
+  const w = sp.clientWidth || 70, h = sp.clientHeight || 18;
+  if (sp.width !== w * dpr) { sp.width = w * dpr; sp.height = h * dpr; }
+  const c = sp.getContext("2d");
+  c.setTransform(dpr, 0, 0, dpr, 0, 0);
+  c.clearRect(0, 0, w, h);
+  c.strokeStyle = "#21262d";
+  c.beginPath(); c.moveTo(0, h / 2); c.lineTo(w, h / 2); c.stroke();
+  const pts = series.slice(-60);
+  if (pts.length > 1) {
+    c.strokeStyle = "#d29922"; c.lineWidth = 1.4; c.beginPath();
+    pts.forEach((p, i) => {
+      const x = (i / (pts.length - 1)) * (w - 2) + 1;
+      const y = h - 2 - (p.v / 100) * (h - 4);
+      i ? c.lineTo(x, y) : c.moveTo(x, y);
+    });
+    c.stroke();
+  }
+
   $("ttftg").textContent = nf.ttft != null ? nf.ttft + "ms" : "–";
   $("mtpg").textContent = nf.mtp != null ? nf.mtp.toFixed(0) + "%" : "–";
   const slots = nf.slots || [];
@@ -392,12 +428,32 @@ function renderQuota(snap) {
   const q = snap.quota;
   $("quota-src").style.display = "";
   $("dot-q").classList.toggle("up", !!q.present);
-  if (!q.present) { $("quotapanel").style.display = "none"; return; }
-  $("quotapanel").style.display = "";
+  const panel = $("quotapanel");
+  if (!q.present) { panel.style.display = "none"; panel.classList.remove("alert", "warnstate"); return; }
+  panel.style.display = "";
   const kv = q.kv || {};
   $("quotabody").innerHTML =
     quotaRow("MiMo (opencode zen)", kv.zused ?? 0, kv.zbudget ?? 0, kv.ztrips ?? 0, kv.zbudget ?? 375, kv.zceil) +
     quotaRow("NVIDIA NIM", kv.nused ?? 0, kv.nbudget ?? 0, kv.ntrips ?? 0, null, kv.nceil);
+
+  // alerts: near stop line → warn glow; tripped/dead → red pulse + notification
+  const zStop = kv.zbudget ?? 375, zNear = (kv.zused ?? 0) >= zStop * 0.9,
+        zDead = (kv.ztrips ?? 0) > 0, nDead = (kv.ntrips ?? 0) > 0;
+  const state = zDead || nDead ? "alert" : zNear ? "warnstate" : "";
+  panel.classList.toggle("alert", state === "alert");
+  panel.classList.toggle("warnstate", state === "warnstate");
+  const sig = state + "|" + (zDead ? "z" : "") + (nDead ? "n" : "");
+  if (state && sig !== renderQuota._last) {
+    renderQuota._last = sig;
+    const msg = zDead ? "MiMo tripped 429 — dead for the day" :
+                nDead ? "NVIDIA NIM tripped 429 — dead for the day" :
+                "MiMo approaching 25% reserve stop line";
+    if (window.Notification && Notification.permission === "granted")
+      new Notification("qwen-parent", { body: msg });
+    pushTicker(Date.now(), `⚠ ${esc(msg)}`, "narr");
+    renderTicker();
+  }
+  if (!state) renderQuota._last = null;
 }
 
 // ------------------------------------------------------ ticker + engine --
@@ -418,6 +474,7 @@ function renderTicker() {
 }
 
 const engLines = [];
+let ENG_FILTER = "all"; // all | perf | warn
 function pushEng(rec) {
   engLines.push(rec);
   if (engLines.length > 250) engLines.shift();
@@ -425,10 +482,23 @@ function pushEng(rec) {
 function renderEng() {
   const el = $("englog");
   const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
-  el.innerHTML = engLines.slice(-120).map((l) =>
-    `<div class="eline ${l.cls || ""}"><span class="ts">${ts(l.t)}</span>${esc(l.line)}</div>`).join("");
+  const keep = {
+    all: () => true,
+    perf: (l) => l.cls === "timing" || l.cls === "ok",
+    warn: (l) => l.cls === "warn" || l.cls === "err",
+  }[ENG_FILTER];
+  const vis = engLines.filter(keep).slice(-160);
+  el.innerHTML = vis.length
+    ? vis.map((l) => `<div class="eline ${l.cls || ""}"><span class="ts">${ts(l.t)}</span>${esc(l.line)}</div>`).join("")
+    : `<div class="eline" style="color:var(--dim)">no lines match this filter</div>`;
   if (stick) el.scrollTop = el.scrollHeight;
 }
+
+document.querySelectorAll("[data-eng]").forEach((b) => b.addEventListener("click", () => {
+  ENG_FILTER = b.dataset.eng;
+  document.querySelectorAll("[data-eng]").forEach((x) => x.classList.toggle("on", x === b));
+  renderEng();
+}));
 
 const NARR = /[▸▲]|\[QUOTA\]|FANOUT|MERGE|THROTTLED/;
 function onOcEvent(ev) {
