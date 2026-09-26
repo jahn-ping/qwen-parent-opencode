@@ -112,9 +112,11 @@ function parseNinferLogLine(l) {
 
 function startDockerLogs() {
   if (process.env.NINFER_LOGS === "off") return;
+  if (state.dockerLogs || startDockerLogs.attaching) return;
   const { spawn, execFile } = require("node:child_process");
   const pick = (name) => {
-    if (!name) return;
+    if (!name || state.dockerLogs || startDockerLogs.attaching) return;
+    startDockerLogs.attaching = true;
     const child = spawn("docker", ["logs", "-f", "--tail", "60", name],
       { stdio: ["ignore", "pipe", "pipe"] }); // ninfer logs to stderr — capture both
     const onChunk = (d) => {
@@ -133,13 +135,22 @@ function startDockerLogs() {
     child.stdout.on("data", onChunk);
     child.stderr.on("data", onChunk);
     child.on("error", () => { /* no docker / no perms — synthetic feed carries on */ });
-    child.on("close", () => { state.dockerLogs = false; });
+    child.on("close", () => {
+      // Self-heal: whatever killed the follower (logind sweep, OOM, docker
+      // restart), reattach after a beat instead of silently starving the feed.
+      startDockerLogs.attaching = false;
+      state.dockerLogs = false;
+      if (state.ninfer.rateSource === "docker-logs") state.ninfer.rateSource = null;
+      engLog("docker logs follower exited — reattaching in 5s", "warn");
+      setTimeout(startDockerLogs, 5000);
+    });
     // die with the parent so restarts don't orphan a `docker logs -f` follower
     const bye = () => { try { child.kill(); } catch { /* already gone */ } };
     process.on("exit", bye);
     process.on("SIGTERM", bye);
     process.on("SIGINT", bye);
     state.dockerLogs = true;
+    startDockerLogs.attaching = false;
     engLog(`attached: docker logs -f ${name}`, "ok");
   };
   const forced = process.env.NINFER_CONTAINER;
