@@ -115,9 +115,9 @@ function startDockerLogs() {
   const { spawn, execFile } = require("node:child_process");
   const pick = (name) => {
     if (!name) return;
-    const child = spawn("docker", ["logs", "-f", "--tail", "60", name], { stdio: ["ignore", "pipe", "ignore"] });
-    let buf = "";
-    child.stdout.on("data", (d) => {
+    const child = spawn("docker", ["logs", "-f", "--tail", "60", name],
+      { stdio: ["ignore", "pipe", "pipe"] }); // ninfer logs to stderr — capture both
+    const onChunk = (d) => {
       buf += d;
       let i;
       while ((i = buf.indexOf("\n")) >= 0) {
@@ -128,7 +128,10 @@ function startDockerLogs() {
           engLog(l, classifyDockerLine(l));
         }
       }
-    });
+    };
+    let buf = "";
+    child.stdout.on("data", onChunk);
+    child.stderr.on("data", onChunk);
     child.on("error", () => { /* no docker / no perms — synthetic feed carries on */ });
     child.on("close", () => { state.dockerLogs = false; });
     state.dockerLogs = true;
