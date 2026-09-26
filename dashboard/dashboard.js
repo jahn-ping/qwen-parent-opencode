@@ -104,11 +104,17 @@ function discoverServers() {
     if (CFG.pinOcPort && !found.has(String(CFG.pinOcPort))) {
       found.set(String(CFG.pinOcPort), { pid: null, name: "pinned" });
     }
-    // drop servers that stopped listening
+    // drop servers only after 3 consecutive missed scans (ss output can be
+    // flaky cycle-to-cycle; instant drops caused discover/gone churn)
     for (const [port, srv] of state.servers) {
-      if (!found.has(String(port)) && String(port) !== String(CFG.pinOcPort)) {
-        state.servers.delete(port);
-        engLog(`opencode server :${port} gone — dropped from watch list`, "warn");
+      if (!found.has(port) && String(port) !== String(CFG.pinOcPort)) {
+        srv.miss = (srv.miss || 0) + 1;
+        if (srv.miss >= 3) {
+          state.servers.delete(port);
+          engLog(`opencode server :${port} gone — dropped from watch list`, "warn");
+        }
+      } else {
+        srv.miss = 0;
       }
     }
     // add new ones
@@ -218,6 +224,7 @@ function summarizeEvent(ev) {
 
 function forwardEvent(srv, ev) {
   const kind = ev.type || "?";
+  if (/heartbeat|\.ping$/i.test(kind)) return; // pure keepalives — never tick the flow
   const p = ev.properties || {};
   const text = extractText(p);
   const summary = summarizeEvent(ev);
@@ -408,7 +415,11 @@ function startDockerLogs() {
       while ((i = buf.indexOf("\n")) >= 0) {
         const l = buf.slice(0, i).trim();
         buf = buf.slice(i + 1);
-        if (l) { handleNinferLine(l); engLog(l, classifyDockerLine(l)); }
+        if (l) {
+          state.ninfer.up = true; // the container is talking — it's alive
+          handleNinferLine(l);
+          engLog(l, classifyDockerLine(l));
+        }
       }
     };
     child.stdout.on("data", onChunk);

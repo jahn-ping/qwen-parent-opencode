@@ -99,12 +99,11 @@
   #bottomrow { display: flex; flex-direction: column; margin: 0 10px 10px; flex: none; }
   #bottomrow .panel { min-height: 0; }
   #panel-eng { height: 235px; min-height: 80px; max-height: 70vh; resize: vertical; }
-  #ticker { font-family: var(--mono); font-size: 11.5px; }
-  #ticker .line { padding: 1px 0; color: var(--dim); white-space: nowrap; overflow: hidden;
+  #ticker { font-family: var(--mono); font-size: 12.5px; }
+  #ticker .line { padding: 2px 0; color: var(--fg); white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; }
   #ticker .line .ts { color: #484f58; margin-right: 6px; }
   #ticker .line.narr { color: var(--green); font-weight: 600; }
-  #ticker .line.msg  { color: var(--fg); }
   #ticker .line .kind { color: var(--blue); }
   #englog { font-family: var(--mono); font-size: 11.5px; overflow: auto; }
   #englog .eline { padding: 1px 0; color: var(--dim); white-space: pre;
@@ -402,13 +401,13 @@ function renderQuota(snap) {
 
 // ------------------------------------------------------ ticker + engine --
 const tickerLines = [];
-function pushTicker(t, html, cls) {
-  tickerLines.push({ t, html, cls });
+function pushTicker(t, html, cls, sig) {
+  tickerLines.push({ t, html, cls, sig });
   if (tickerLines.length > 250) tickerLines.shift();
 }
 function renderTicker() {
   $("ticker").innerHTML = tickerLines.slice(-120).map((l) =>
-    `<div class="line ${l.cls || ""}"><span class="ts">${ts(l.t)}</span>${l.html}</div>`).join("");
+    `<div class="line ${l.cls || ""}"><span class="ts">${ts(l.t)}</span>${l.html}${l.rep > 1 ? ` <span class="src">×${l.rep}</span>` : ""}</div>`).join("");
   const el = $("ticker").parentElement;
   el.scrollTop = el.scrollHeight;
 }
@@ -429,13 +428,18 @@ function renderEng() {
 const NARR = /[▸▲]|\[QUOTA\]|FANOUT|MERGE|THROTTLED/;
 function onOcEvent(ev) {
   const { t, kind, summary, text } = ev;
+  if (/heartbeat|\.ping$/i.test(kind)) return; // keepalive spam — never render
   const body = (text || "").trim();
   const isNarr = NARR.test(body) || NARR.test(summary || "");
   if (isNarr) {
     pushTicker(t, esc(body || summary), "narr");
   } else {
+    // suppress exact duplicates back-to-back (same kind + summary)
+    const prev = tickerLines[tickerLines.length - 1];
+    const sig = `${kind}|${summary}`;
+    if (prev && prev.sig === sig) { prev.t = t; prev.rep = (prev.rep || 1) + 1; return; }
     const cls = kind.includes("message") || kind.includes("session") ? "msg" : "";
-    pushTicker(t, `<span class="kind">${esc(kind)}</span> ${esc(summary || "")}`, cls);
+    pushTicker(t, `<span class="kind">${esc(kind)}</span> ${esc(summary || "")}`, cls, sig);
   }
 }
 
