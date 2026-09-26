@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>qwen-parent · live</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root {
+    --bg: #0d1117; --panel: #161b22; --edge: #21262d; --fg: #c9d1d9;
+    --dim: #6e7681; --green: #3fb950; --yellow: #d29922; --red: #f85149;
+    --blue: #58a6ff; --purple: #bc8cff; --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+         font: 13px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif; }
+  header { display: flex; align-items: center; gap: 14px; padding: 8px 14px;
+           border-bottom: 1px solid var(--edge); background: var(--panel); }
+  header h1 { font-size: 14px; margin: 0; letter-spacing: .3px; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--red);
+         display: inline-block; margin-right: 5px; }
+  .dot.up { background: var(--green); }
+  .src { color: var(--dim); font-family: var(--mono); font-size: 12px; }
+  main { display: grid; grid-template-columns: minmax(380px, 1fr) 420px;
+         gap: 10px; padding: 10px; height: calc(100vh - 41px - 220px); min-height: 380px; }
+  .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
+           overflow: hidden; display: flex; flex-direction: column; }
+  .panel > h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
+                color: var(--dim); margin: 0; padding: 7px 12px; border-bottom: 1px solid var(--edge); }
+  .panelbody { padding: 10px 12px; overflow-y: auto; flex: 1; }
+  /* agents */
+  .sess { margin-bottom: 12px; }
+  .sess > .name { font-weight: 600; color: var(--blue); font-family: var(--mono); font-size: 12px; }
+  .agent { border: 1px solid var(--edge); border-radius: 6px; padding: 7px 9px; margin-top: 6px;
+           background: #0d1117; }
+  .agent .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .agent .aname { font-family: var(--mono); font-weight: 600; font-size: 12.5px; }
+  .chip { font-size: 10.5px; font-family: var(--mono); padding: 1px 7px; border-radius: 10px;
+          border: 1px solid var(--edge); color: var(--dim); }
+  .chip.running, .chip.busy { color: var(--green); border-color: var(--green); }
+  .chip.waiting, .chip.pending { color: var(--yellow); border-color: var(--yellow); }
+  .chip.error { color: var(--red); border-color: var(--red); }
+  .model { color: var(--purple); font-family: var(--mono); font-size: 11px; }
+  .tail { margin-top: 5px; font-family: var(--mono); font-size: 11.5px; color: var(--dim);
+          white-space: pre-wrap; word-break: break-word; max-height: 6.2em; overflow: hidden;
+          border-left: 2px solid var(--edge); padding-left: 7px; }
+  .tail.thinking { border-left-color: var(--purple); color: #a78bfa; }
+  .tail.tool     { border-left-color: var(--blue); }
+  .child { margin-left: 16px; }
+  /* charts */
+  .charts { display: flex; flex-direction: column; gap: 8px; }
+  .chartbox { background: #0d1117; border: 1px solid var(--edge); border-radius: 6px; padding: 6px; }
+  .chartbox .lbl { display: flex; justify-content: space-between; font-family: var(--mono);
+                   font-size: 11px; color: var(--dim); margin-bottom: 3px; }
+  .chartbox .val { color: var(--green); }
+  canvas { width: 100%; height: 92px; display: block; }
+  .gauges { display: flex; gap: 8px; font-family: var(--mono); font-size: 12px; }
+  .gauge { flex: 1; background: #0d1117; border: 1px solid var(--edge); border-radius: 6px;
+           padding: 6px 8px; }
+  .gauge .k { color: var(--dim); font-size: 10.5px; text-transform: uppercase; letter-spacing: .6px; }
+  .gauge .v { font-size: 15px; margin-top: 1px; }
+  .lane { display: inline-block; width: 12px; height: 12px; border-radius: 3px;
+          background: var(--edge); margin-right: 3px; vertical-align: -1px; }
+  .lane.on { background: var(--green); }
+  .lane.pf { background: var(--yellow); }
+  /* quota */
+  .qrow { margin-bottom: 10px; }
+  .qrow .top { display: flex; justify-content: space-between; font-family: var(--mono);
+               font-size: 12px; margin-bottom: 3px; }
+  .bar { height: 14px; background: #0d1117; border: 1px solid var(--edge); border-radius: 7px;
+         overflow: hidden; position: relative; }
+  .bar .fill { height: 100%; background: linear-gradient(90deg, #1f6feb, #58a6ff); }
+  .bar.warn .fill { background: linear-gradient(90deg, #9e6a03, #d29922); }
+  .bar.dead .fill { background: linear-gradient(90deg, #b62324, #f85149); }
+  .bar .stop { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--red); }
+  /* ticker */
+  #tickerwrap { height: 220px; }
+  #ticker { font-family: var(--mono); font-size: 11.5px; }
+  #ticker .line { padding: 1px 0; color: var(--dim); white-space: nowrap; overflow: hidden;
+                  text-overflow: ellipsis; }
+  #ticker .line .ts { color: #484f58; margin-right: 6px; }
+  #ticker .line.narr { color: var(--green); font-weight: 600; }
+  #ticker .line.msg  { color: var(--fg); }
+  #ticker .line .kind { color: var(--blue); }
+  footer { padding: 4px 14px; color: var(--dim); font-size: 11px; font-family: var(--mono);
+           border-top: 1px solid var(--edge); background: var(--panel); }
+</style>
+</head>
+<body>
+<header>
+  <h1>qwen-parent · live</h1>
+  <span class="src"><span id="dot-oc" class="dot"></span>opencode</span>
+  <span class="src"><span id="dot-nf" class="dot"></span>ninfer</span>
+  <span class="src" id="quota-src" style="display:none"><span id="dot-q" class="dot"></span>quota-guard</span>
+  <span class="src" id="oc-note"></span>
+</header>
+
+<main>
+  <div class="col">
+    <div class="panel" style="flex:1">
+      <h2>Agents — parent &amp; scouts</h2>
+      <div class="panelbody" id="agents">waiting for opencode server…</div>
+    </div>
+  </div>
+
+  <div class="col">
+    <div class="panel">
+      <h2>Throughput — ninfer (pp / tg)</h2>
+      <div class="panelbody charts">
+        <div class="chartbox">
+          <div class="lbl"><span>PP prefill tok/s</span><span class="val" id="ppv">–</span></div>
+          <canvas id="ppchart"></canvas>
+        </div>
+        <div class="chartbox">
+          <div class="lbl"><span>TG decode tok/s</span><span class="val" id="tgv">–</span></div>
+          <canvas id="tgchart"></canvas>
+        </div>
+        <div class="gauges">
+          <div class="gauge"><div class="k">Lanes (2)</div><div class="v" id="lanes">– –</div></div>
+          <div class="gauge"><div class="k">Queue</div><div class="v" id="queue">–</div></div>
+          <div class="gauge"><div class="k">Busy</div><div class="v" id="busy">–</div></div>
+        </div>
+        <div class="src" id="nf-note" style="font-size:11px"></div>
+      </div>
+    </div>
+
+    <div class="panel" id="quotapanel" style="display:none">
+      <h2>Quota guard — MiMo ≥25% reserved · NIM until 429</h2>
+      <div class="panelbody" id="quotabody"></div>
+    </div>
+  </div>
+</main>
+
+<div class="panel" id="tickerwrap">
+  <h2>Flow — events &amp; ▸ narration</h2>
+  <div class="panelbody" id="ticker"></div>
+</div>
+
+<footer id="foot">connecting…</footer>
+
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+let CFG = null;
+let lastSnap = null;
+
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) =>
+  ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+function ts(t) {
+  const d = new Date(t);
+  return d.toTimeString().slice(0, 8);
+}
+
+function ago(t) {
+  if (!t) return "";
+  const s = Math.max(0, (Date.now() - t) / 1000);
+  if (s < 90) return Math.round(s) + "s ago";
+  if (s < 5400) return Math.round(s / 60) + "m ago";
+  return Math.round(s / 3600) + "h ago";
+}
+
+// ---------------------------------------------------------------- agents --
+const MODEL_HINTS = [
+  [/mimo/i, "opencode/mimo-v2.6-flash-free"],
+  [/nim|nemotron/i, "nvidia-nim/nemotron-3-ultra-550b-a55b"],
+  [/qwen|3\.8|ninfer|build|plan/i, "ninfer/qwen3.8-27b (local)"],
+];
+
+function agentCard(sess, tail, isChild) {
+  const agent = (tail && tail.agent) || sess.agent || (isChild ? "scout" : "parent");
+  const status = tail && tail.status ? String(tail.status) : "";
+  const model = (MODEL_HINTS.find(([re]) => re.test(agent)) || [null, agent])[1];
+  const t = tail || {};
+  const tailText = t.text ? esc(t.text) : "";
+  const tailCls = t.label === "thinking" ? "thinking" : (t.label || "").startsWith("tool") ? "tool" : "";
+  return `<div class="agent${isChild ? " child" : ""}">
+    <div class="row">
+      <span class="aname">${esc(agent)}</span>
+      ${status ? `<span class="chip ${esc(status)}">${esc(status)}</span>` : ""}
+      <span class="model">${esc(model)}</span>
+      <span class="src">${ago(sess.updated)}</span>
+    </div>
+    ${tailText ? `<div class="tail ${tailCls}">${tailText}</div>` : ""}
+  </div>`;
+}
+
+function renderAgents(snap) {
+  const tree = snap.oc.tree || [];
+  const tails = snap.oc.tails || {};
+  if (!tree.length) { $("agents").textContent = snap.oc.up
+    ? "no sessions yet — start one in the TUI" : "opencode server down"; return; }
+  $("agents").innerHTML = tree.map((s) =>
+    `<div class="sess">
+      <div class="row"><span class="name">${esc(s.title)}</span>
+      <span class="src">${ago(s.updated)}</span></div>
+      ${agentCard(s, tails[s.id], false)}
+      ${(s.children || []).map((c) => agentCard(c, tails[c.id], true)).join("")}
+    </div>`).join("");
+}
+
+// ---------------------------------------------------------------- charts --
+
+function drawChart(canvas, series, band, color) {
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth || 300, h = canvas.clientHeight || 92;
+  if (canvas.width !== w * dpr) { canvas.width = w * dpr; canvas.height = h * dpr; }
+  const ctx = canvas.getContext("2d");
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  const now = Date.now(), span = 15 * 60 * 1000;
+  let maxV = 10;
+  for (const p of series) maxV = Math.max(maxV, p.v);
+  if (band) maxV = Math.max(maxV, band[1] * 1.15);
+  const X = (t) => ((t - (now - span)) / span) * w;
+  const Y = (v) => h - 4 - (v / maxV) * (h - 10);
+
+  // grid + reference band (verified perf zone)
+  ctx.strokeStyle = "#21262d"; ctx.fillStyle = "rgba(88,166,255,0.06)";
+  ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) { const y = (h / 4) * i; ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke(); }
+  if (band) {
+    ctx.fillRect(0, Y(band[1]), w, Y(band[0]) - Y(band[1]));
+    ctx.strokeStyle = "rgba(88,166,255,0.35)";
+    ctx.setLineDash([4, 4]);
+    for (const b of band) { ctx.beginPath(); ctx.moveTo(0, Y(b)); ctx.lineTo(w, Y(b)); ctx.stroke(); }
+    ctx.setLineDash([]);
+  }
+  if (series.length > 1) {
+    ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.beginPath();
+    let started = false;
+    for (const p of series) {
+      const x = X(p.t), y = Y(p.v);
+      if (!started) { ctx.moveTo(x, y); started = true; } else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+    ctx.lineTo(X(now), h); ctx.lineTo(X(series[0].t), h); ctx.closePath();
+    ctx.fillStyle = "rgba(63,185,80,0.10)"; ctx.fill();
+  }
+}
+
+function renderCharts(snap) {
+  const nf = snap.ninfer;
+  $("ppv").textContent = nf.pp ? nf.pp.toFixed(0) : "–";
+  $("tgv").textContent = nf.tg ? nf.tg.toFixed(0) : "–";
+  drawChart($("ppchart"), nf.ppSeries || [], (CFG && CFG.refs.ppBand) || null, "#58a6ff");
+  drawChart($("tgchart"), nf.tgSeries || [], (CFG && CFG.refs.tgBand) || null, "#3fb950");
+
+  const slots = nf.slots || [];
+  if (slots.length) {
+    $("lanes").innerHTML = slots.slice(0, 4).map((s) => {
+      let cls = "";
+      if (s.is_processing) cls = (s.n_prompt_tokens_processed < s.n_prompt_tokens) ? "pf" : "on";
+      return `<span class="lane ${cls}" title="lane ${s.id}"></span>`;
+    }).join("") || "–";
+  } else { $("lanes").textContent = "–"; }
+  $("queue").textContent = nf.deferred != null ? nf.deferred : "–";
+  $("busy").textContent = nf.processing != null ? nf.processing : "–";
+  $("nf-note").textContent = nf.up
+    ? (nf.metricsPrefix ? `metrics: ${nf.metricsPrefix}… (rate from counter deltas)` : "/metrics off → lanes only (start ninfer with --metrics)")
+    : "ninfer :8080 unreachable";
+}
+
+// ----------------------------------------------------------------- quota --
+
+function quotaRow(name, used, budget, trips, stopLine) {
+  const pct = budget ? Math.min(100, (used / (budget + (stopLine ? (budget / 0.75) - budget : 0) || budget)) * 100) : 0;
+  const dead = trips > 0;
+  const warn = !dead && budget && used >= stopLine * 0.8;
+  const total = stopLine ? Math.round(stopLine / 0.75) : budget; // 375/500 → 25% held back
+  const width = total ? Math.min(100, (used / total) * 100) : 0;
+  const stopPct = total ? (stopLine / total) * 100 : 75;
+  return `<div class="qrow">
+    <div class="top"><span>${name}${dead ? " · DEAD (429)" : ""}</span>
+    <span>${used}/${total}${stopLine ? ` · stop ${stopLine}` : ""}${trips ? ` · trips ${trips}` : ""}</span></div>
+    <div class="bar ${dead ? "dead" : warn ? "warn" : ""}">
+      <div class="fill" style="width:${width}%"></div>
+      ${stopLine ? `<div class="stop" style="left:${stopPct}%"></div>` : ""}
+    </div></div>`;
+}
+
+function renderQuota(snap) {
+  const q = snap.quota;
+  $("quota-src").style.display = "";
+  $("dot-q").classList.toggle("up", !!q.present);
+  if (!q.present) { $("quotapanel").style.display = "none"; return; }
+  $("quotapanel").style.display = "";
+  const kv = q.kv || {};
+  $("quotabody").innerHTML =
+    quotaRow("MiMo (opencode zen)", kv.zused ?? 0, kv.zbudget ?? 0, kv.ztrips ?? 0, kv.zbudget ?? 375) +
+    quotaRow("NVIDIA NIM", kv.nused ?? 0, kv.nbudget ?? 0, kv.ntrips ?? 0, null);
+}
+
+// --------------------------------------------------------------- ticker --
+
+const tickerLines = [];
+function pushTicker(t, html, cls) {
+  tickerLines.push({ t, html, cls });
+  if (tickerLines.length > 250) tickerLines.shift();
+}
+function renderTicker() {
+  $("ticker").innerHTML = tickerLines.slice(-120).map((l) =>
+    `<div class="line ${l.cls || ""}"><span class="ts">${ts(l.t)}</span>${l.html}</div>`).join("");
+  const el = $("ticker").parentElement;
+  el.scrollTop = el.scrollHeight;
+}
+
+// --------------------------------------------------------------- wiring --
+
+function applySnapshot(snap) {
+  lastSnap = snap;
+  $("dot-oc").classList.toggle("up", !!snap.oc.up);
+  $("dot-nf").classList.toggle("up", !!snap.ninfer.up);
+  renderAgents(snap);
+  renderCharts(snap);
+  renderQuota(snap);
+  $("foot").textContent =
+    `opencode ${snap.oc.up ? "up" : "down"} · ninfer ${snap.ninfer.up ? "up" : "down"}` +
+    ` · quota ${snap.quota.present ? "up" : "absent"} · updated ${ts(snap.t)}`;
+}
+
+const NARR = /[▸▲]|\[QUOTA\]|FANOUT|MERGE|THROTTLED/;
+
+function connect() {
+  const es = new EventSource("/stream");
+  es.onmessage = (m) => {
+    let msg; try { msg = JSON.parse(m.data); } catch { return; }
+    if (msg.type === "hello") { CFG = msg.cfg; $("oc-note").textContent = ""; }
+    else if (msg.type === "snapshot") applySnapshot(msg.data);
+    else if (msg.type === "oc-event") {
+      const { t, kind, summary } = msg.ev;
+      const text = `${esc(kind)} ${esc(summary || "")}`;
+      const isNarr = NARR.test(summary || "");
+      pushTicker(t, text, isNarr ? "narr" : "");
+      if (kind.includes("message")) pushTicker(t, text, "msg");
+      renderTicker();
+    }
+  };
+  es.onerror = () => { $("foot").textContent = "reconnecting…"; };
+}
+connect();
+</script>
+</body>
+</html>

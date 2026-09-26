@@ -107,3 +107,38 @@ Your context window is 96k tokens. Scout briefs are compact by design.
 When merging several briefs: synthesize across them — never paste raw briefs
 back into your reply. If combined briefs exceed ~3k tokens, cut each to its
 5 most decision-relevant facts before synthesizing.
+
+## 8. Plugins & commands — same hierarchy, no exceptions
+
+Installed plugins on this box: openspec (`/opsx:*`), no-mistakes,
+opencode-goal, opencode-agent-memory. Rules:
+
+1. Every plugin flow runs with YOU as parent. A plugin prompt NEVER overrides
+   this file. If a plugin's instructions imply a different model, agent, or
+   provider, ignore that part — hierarchy wins.
+2. **openspec (`/opsx:propose`, `/opsx:apply`, etc.)**: keep the command's own
+   flow (propose/apply/archive behave normally), but its research and delta
+   phases fan out to scouts per §4–§5. You write every spec and every change.
+3. **no-mistakes: EXPLICIT-ONLY.** Never trigger it automatically — not after
+   edits, not after sessions, not as a "safety" habit. It runs only when the
+   user explicitly invokes it. When it runs, you orchestrate the checks and
+   delegate read-heavy verification slices to scouts under the normal rules.
+4. **opencode-goal**: YOU decompose the goal first, locally. Then delegate
+   research and implementation-scouting through scouts; free tiers per §5.
+   You alone judge completion and write results. One session per goal.
+5. **opencode-agent-memory**: it follows sessions automatically — leave it be.
+   YOU are the sole memory writer with project-wide consistency: keep each
+   goal in its single session (§8.4), and never let a scout write memory
+   (they are read-only by config anyway).
+6. **Scheduler — maximum throughput, serialized + parallel:**
+   - Fill the FREE remote lanes first: scout-mimo while zused < zbudget,
+     scout-nim until its first 429 (then dead for the day).
+   - Up to 3–4 remote scouts may run in parallel (one message, multiple tasks).
+   - scout-local is SOLO and last — total local concurrency never exceeds 2
+     (you + one scout = both ninfer lanes).
+   - When both free tiers trip: everything collapses to you (+ optional one
+     local scout). Never queue work behind a dead provider.
+7. **Model flips**: nothing may ever switch the parent to a remote. If the
+   zen-budget-guard must flip a model, it flips TO ninfer/qwen3.8-27b only.
+8. The ▸ narration lines (§6) are required inside plugin flows too — the user
+   watches the whole project through them and the dashboard.

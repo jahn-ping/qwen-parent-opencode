@@ -20,7 +20,7 @@ the remotes appear nowhere as a primary.
           │ opencode/        │ │ nvidia-nim/   │ │ local Qwen      │
           │ mimo-v2.6-       │ │ nemotron-3-   │ │ LAST resort,    │
           │ flash-free       │ │ ultra-550b    │ │ max 1 at a time │
-           │ stop at 375/500  │ │ until 429     │ │ (shares slots   │
+          │ stop at 375/500  │ │ until 429     │ │ (shares slots   │
           │ (≥25% reserved)  │ │ → dead today  │ │  with parent)   │
           └──────────────────┘ └───────────────┘ └─────────────────┘
                  read-only workers: facts-only briefs, ≤15 bullets, file:line
@@ -31,8 +31,9 @@ the remotes appear nowhere as a primary.
 | file          | what it is                                                  |
 |---------------|-------------------------------------------------------------|
 | `opencode.json` | providers, the parent lock, the three scout subagents     |
-| `AGENTS.md`   | the parent's operating law: hierarchy, quota ledger, narration |
+| `AGENTS.md`   | the parent's operating law: hierarchy, quota ledger, narration, plugin rules |
 | `install.sh`  | one-shot installer (backs up anything it replaces)          |
+| `dashboard/`  | live observability window (LM Studio-style) — see below     |
 
 ## Get it onto the other box
 
@@ -98,11 +99,83 @@ Live-visibility cheatsheet:
 
 | want                          | how                                        |
 |-------------------------------|--------------------------------------------|
+| **everything at once**        | **the live dashboard** (next section)      |
 | parent's thinking streamed    | `/thinking` in the TUI                     |
 | headless run with thinking    | `opencode run --thinking "..."`            |
 | raw event stream (scripts)    | `opencode run --format json "..."`         |
 | what each model actually spent| `opencode stats --models`                  |
 | replay a whole session as web | `/share` (public link — off by default)    |
+
+## Live dashboard — the "watch everything" window
+
+A zero-dependency observability page (LM Studio server-view style): the
+agent tree with live thinking tails, pp/tg throughput charts with the
+verified V100 reference bands, lane/queue gauges, the quota-guard bars,
+and a scrolling ticker of every event plus the parent's ▸ narration.
+
+Start the TUI with the server port pinned, then run the dashboard:
+
+```bash
+opencode --hostname 127.0.0.1 --port 4096     # your normal TUI, port pinned
+node dashboard/dashboard.js                    # from this repo, any terminal
+# → open http://127.0.0.1:8787
+```
+
+What you see:
+
+- **Agents panel** — the parent session and every scout the task tool
+  spawns, with status chips (waiting/running), the model each one runs on,
+  and a live tail of its current reasoning (purple), text, or tool call.
+  This is the "what is it thinking on / what's waiting" view.
+- **Throughput panel** — ninfer prefill (pp) and decode (tg) tok/s over the
+  last 15 minutes, drawn from `/metrics` counter deltas (works even though
+  the rate gauges decay to zero when idle), with the verified 205–614 pp /
+  27–59 tg bands as dashed guide zones. Lane pips show the 2 slots
+  (green = decoding, yellow = prefilling); queue depth from
+  `requests_deferred`.
+- **Quota panel** — MiMo used vs the 375 stop line (the 25% reserve stays
+  visibly untouched) and NIM used until its first 429 marks it DEAD; reads
+  `~/scripts/zen-budget.sh --kv` every 30s. Panel hides if the script is
+  absent.
+- **Flow ticker** — every opencode bus event, with the parent's
+  `▸ FANOUT / ▸ MERGE / ▸ THROTTLED` narration lines highlighted green.
+
+Notes: if `OPENCODE_SERVER_PASSWORD` is set, export it before starting the
+dashboard (it forwards basic auth). If `/metrics` is disabled on ninfer,
+add `--metrics` to its serve flags for the charts; otherwise the panel
+degrades to lane indicators only. All three sources degrade independently —
+the page never goes blank because one is down.
+
+## Plugins under the hierarchy
+
+The box runs: **openspec** (`/opsx:*`), **no-mistakes**, **opencode-goal**,
+**opencode-agent-memory**. The law is `AGENTS.md` §8 — summary:
+
+- Every plugin flow runs with local Qwen as parent; plugin prompts never
+  override the protocol. Research/delta/verification phases fan out to the
+  scouts under the normal quota rules; the parent writes everything.
+- **no-mistakes is explicit-only**: it never runs automatically after edits
+  or sessions — only when you invoke it.
+- **opencode-goal**: parent decomposes the goal first, delegates scouting,
+  judges completion. One session per goal (keeps agent-memory consistent);
+  the parent is the sole memory writer.
+- Scheduler: free remote lanes fill first (MiMo while under budget, NIM
+  until 429), up to 3–4 parallel remote scouts; scout-local is solo and
+  last; total local concurrency caps at 2 (parent + one scout = both ninfer
+  lanes). If both free tiers trip, everything collapses to the parent.
+
+If a plugin registers its own agent carrying a remote model, discover and
+pin it (same-name override in `opencode.json`, or disable it outright):
+
+```bash
+curl -s 127.0.0.1:4096/agent | jq '.[] | {name, model, mode}'   # list ALL agents incl. plugin ones
+```
+
+```jsonc
+// in opencode.json → "agent" block (example — use the real name found above):
+"some-plugin-agent": { "model": "ninfer/qwen3.8-27b" }        // pin to parent's model
+// or: "some-plugin-agent": { "disable": true }                // remove it entirely
+```
 
 ## Tuning knobs
 
