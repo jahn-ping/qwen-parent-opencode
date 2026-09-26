@@ -182,6 +182,36 @@ curl -s 127.0.0.1:4096/agent | jq '.[] | {name, model, mode}'   # list ALL agent
 // or: "some-plugin-agent": { "disable": true }                // remove it entirely
 ```
 
+## Benchmark / bug report
+
+One command exercises the whole deployment and writes a report you can hand
+back for diagnosis:
+
+```bash
+node bench/benchmark.js            # ~1 minute
+node bench/benchmark.js --scouts   # also pings each scout live
+                                  # (costs ~1 MiMo + ~1 NIM call — the local scout is free)
+```
+
+It checks: host/GPU/docker environment · ninfer `/health` `/v1/models`
+`/slots` `/metrics` · **real inference benchmarks** (short decode, ~3.5K-token
+prefill, 2-lane concurrent — the pp/tg numbers against the verified bands) ·
+the opencode server (auth, the **hierarchy check** — any primary agent on a
+non-local model is flagged as a FAILURE — config provider allowlist, an 8s
+SSE event sample) · the dashboard (did its charts actually move during the
+bench) · the quota guard (values + 25%-reserve math) · optional live scout
+pings.
+
+Output lands in `reports/` (gitignored):
+
+- `bug-report-<timestamp>.md` — human-readable verdict, failures first
+- `bug-report-<timestamp>.json` — same data plus redacted raw samples
+
+For the cleanest read: have the TUI (pinned `:4096`) and the dashboard
+running before you benchmark. Bring back BOTH files — the `.json` carries
+the shapes and samples the `.md` summarizes. No secrets ever land in a
+report (auth/key/token fields are redacted).
+
 ## Tuning knobs
 
 | knob                          | where                              | default |
