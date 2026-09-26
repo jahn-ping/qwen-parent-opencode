@@ -134,6 +134,11 @@ function startDockerLogs() {
     child.stderr.on("data", onChunk);
     child.on("error", () => { /* no docker / no perms — synthetic feed carries on */ });
     child.on("close", () => { state.dockerLogs = false; });
+    // die with the parent so restarts don't orphan a `docker logs -f` follower
+    const bye = () => { try { child.kill(); } catch { /* already gone */ } };
+    process.on("exit", bye);
+    process.on("SIGTERM", bye);
+    process.on("SIGINT", bye);
     state.dockerLogs = true;
     engLog(`attached: docker logs -f ${name}`, "ok");
   };

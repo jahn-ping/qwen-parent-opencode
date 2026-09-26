@@ -229,6 +229,12 @@ async function sectionBench() {
     return { status: agg >= 35 ? "pass" : "warn",
       expected: "≥35 tok/s aggregate (verified 45–59 @2 streams)", got: `${agg.toFixed(1)} tok/s` };
   });
+  // ninfer emits throughput log lines on a fixed 5s grid — short bench bursts
+  // often finish between lines. Give the dashboard's feed time to catch one.
+  await check("bench", "telemetry settle window", async () => {
+    await new Promise((r) => setTimeout(r, 9000));
+    return { status: "info", got: "waited 9s for throughput-log grid" };
+  });
 }
 
 async function sectionOpencode() {
