@@ -342,22 +342,30 @@ async function sectionDashboard() {
   await check("dashboard", "charts track live traffic", async () => {
     if (!snap) return { status: "warn", got: "no snapshot" };
     const before = { pp: snap.ninfer.ppSeries.length, tg: snap.ninfer.tgSeries.length };
-    // ninfer prints throughput lines on a ~5s grid — poll until the series
-    // grows (≤14s), which proves the whole pipeline: logs → parser → series.
+    // ninfer prints throughput lines only while requests run — so this check
+    // DRIVES traffic (short background generations) instead of waiting idle.
+    const load = (async () => {
+      for (let i = 0; i < 3; i++) {
+        await streamChat(`Count from ${i * 10 + 1} to ${i * 10 + 40}, one per line.`, 60)
+          .catch(() => {});
+      }
+    })();
     for (let i = 0; i < 7; i++) {
       await sleep(2000);
       snap = await jget(`${CFG.dashBase}/snapshot`, {}, 4000).catch(() => null);
       if (!snap) break;
       const after = { pp: snap.ninfer.ppSeries.length, tg: snap.ninfer.tgSeries.length };
       if (after.pp > before.pp || after.tg > before.tg) {
+        await load;
         d.feed = { before, after };
-        return { status: "pass", expected: "pp/tg series grows over time",
+        return { status: "pass", expected: "series grows while traffic runs",
           got: `pp ${before.pp}→${after.pp}, tg ${before.tg}→${after.tg}` };
       }
     }
+    await load;
     const after = snap ? { pp: snap.ninfer.ppSeries.length, tg: snap.ninfer.tgSeries.length } : before;
     d.feed = { before, after };
-    return { status: "fail", expected: "pp/tg series grows over time",
+    return { status: "fail", expected: "series grows while traffic runs",
       got: `pp ${before.pp}→${after.pp}, tg ${before.tg}→${after.tg} in 14s`,
       note: "feed not moving — check docker-logs attach (or /metrics//slots fallbacks)" };
   });
