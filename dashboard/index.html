@@ -294,7 +294,9 @@ function renderCharts(snap) {
   $("queue").textContent = nf.deferred != null ? nf.deferred : "–";
   $("busy").textContent = nf.processing != null ? nf.processing : "–";
   $("nf-note").textContent = nf.up
-    ? (nf.rateSource === "metrics"
+    ? (nf.rateSource === "docker-logs"
+        ? "exact rates parsed from ninfer's own throughput logs (5s windows)"
+        : nf.rateSource === "metrics"
         ? `exact rates from /metrics (${nf.metricsPrefix}… counter deltas)`
         : nf.rateSource === "slots"
           ? "rates from /slots lane deltas — add --metrics to ninfer for exact server-wide counters"

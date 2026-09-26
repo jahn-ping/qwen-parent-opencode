@@ -89,8 +89,25 @@ function engLog(line, cls) {
 function classifyDockerLine(l) {
   if (/\sW\s|warning/i.test(l)) return "warn";
   if (/\sE\s|error/i.test(l)) return "err";
-  if (/tokens per second|print_timing|per token/i.test(l)) return "timing";
+  if (/throughput|req#\d+ done|tok\/s|tokens per second|print_timing|per token/i.test(l)) return "timing";
   return "";
+}
+
+// ninfer's own logs are the best telemetry on this fork (no /metrics, no /slots).
+// Feed the pp/tg series + busy gauge straight from the periodic throughput lines:
+//   throughput | 5.0s | prefill 12.2 tok/s (61 tok) | decode 10.2 tok/s (51 tok) | running 1 …
+function parseNinferLogLine(l) {
+  const m = l.match(/throughput \| ([\d.]+)s \| (?:prefill ([\d.]+) tok\/s(?: \((\d+) tok\))? \| )?decode ([\d.]+) tok\/s(?: \((\d+) tok\))? \| running (\d+)/);
+  if (!m) return;
+  const now = Date.now();
+  state.ninfer.pp = m[2] ? parseFloat(m[2]) : 0;
+  state.ninfer.tg = parseFloat(m[4]);
+  state.ninfer.processing = parseInt(m[6], 10);
+  state.ninfer.ppSeries.push({ t: now, v: state.ninfer.pp });
+  state.ninfer.tgSeries.push({ t: now, v: state.ninfer.tg });
+  if (state.ninfer.ppSeries.length > MAX_SAMPLES) state.ninfer.ppSeries.shift();
+  if (state.ninfer.tgSeries.length > MAX_SAMPLES) state.ninfer.tgSeries.shift();
+  state.ninfer.rateSource = "docker-logs";
 }
 
 function startDockerLogs() {
@@ -106,7 +123,10 @@ function startDockerLogs() {
       while ((i = buf.indexOf("\n")) >= 0) {
         const l = buf.slice(0, i).trim();
         buf = buf.slice(i + 1);
-        if (l) engLog(l, classifyDockerLine(l));
+        if (l) {
+          parseNinferLogLine(l);
+          engLog(l, classifyDockerLine(l));
+        }
       }
     });
     child.on("error", () => { /* no docker / no perms — synthetic feed carries on */ });
