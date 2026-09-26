@@ -27,6 +27,7 @@
          overflow-y: auto; } /* min-height:0 lets panel bodies scroll instead of the
                                 column growing past the viewport; overflow is the
                                 safety net for very short windows */
+  main > .col:last-child { resize: horizontal; min-width: 340px; max-width: 75vw; }
   .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
            overflow: hidden; display: flex; flex-direction: column; min-height: 0; }
   .panel > h2 { font-size: 11px; text-transform: uppercase; letter-spacing: .8px;
@@ -80,8 +81,8 @@
   /* flow + engine log: stacked full-width rows; engine lines scroll horizontally */
   #bottomrow { display: flex; flex-direction: column; gap: 10px; margin: 0 10px 10px; flex: none; }
   #bottomrow .panel { min-height: 0; }
-  #panel-flow { height: 150px; }
-  #panel-eng { height: 235px; }
+  #panel-flow { height: 150px; min-height: 70px; max-height: 70vh; resize: vertical; }
+  #panel-eng { height: 235px; min-height: 80px; max-height: 70vh; resize: vertical; }
   #ticker { font-family: var(--mono); font-size: 11.5px; }
   #ticker .line { padding: 1px 0; color: var(--dim); white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; }
