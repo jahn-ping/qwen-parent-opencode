@@ -37,6 +37,14 @@
                 display: flex; align-items: center; gap: 8px; }
   .panelbody { padding: 10px 12px; overflow-y: auto; flex: 1; }
   /* agents */
+  .tabbar { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 7px; margin-bottom: 8px;
+            border-bottom: 1px solid var(--edge); flex: none; }
+  .stab { flex: none; font-family: var(--mono); font-size: 11px; color: var(--dim);
+          background: #0d1117; border: 1px solid var(--edge); border-radius: 7px;
+          padding: 3px 10px; cursor: pointer; max-width: 220px; overflow: hidden;
+          text-overflow: ellipsis; white-space: nowrap; }
+  .stab:hover { color: var(--fg); border-color: #3d444d; }
+  .stab.on { color: var(--blue); border-color: var(--blue); background: rgba(88,166,255,0.08); }
   .sess { margin-bottom: 12px; }
   .sess > .name { font-weight: 600; color: var(--blue); font-family: var(--mono); font-size: 12px; }
   .meta { color: var(--dim); font-size: 10.5px; font-family: var(--mono); }
@@ -128,7 +136,7 @@
 <main>
   <div class="col">
     <div class="panel" style="flex:1">
-      <h2>Agents — every harness session</h2>
+      <h2>Agents <span class="meta" id="sess-count"></span></h2>
       <div class="panelbody" id="agents">waiting for opencode servers…</div>
     </div>
   </div>
@@ -245,21 +253,37 @@ function agentCard(sess, tail, isChild, multi) {
   </div>`;
 }
 
+let selectedKey = null; // "srv:id" of the tabbed session
+
+function sessionHtml(s, tails, multi) {
+  return `<div class="sess">
+    <div class="row"><span class="name">${esc(s.title)}</span>
+    ${s.dir ? `<span class="meta" title="${esc(s.dir)}">${esc(s.dir)}</span>` : ""}
+    <span class="src">${ago(s.updated)}</span></div>
+    ${agentCard(s, tails[s.id], false, multi)}
+    ${(s.children || []).map((c) => agentCard(c, tails[c.id], true, multi)).join("")}
+  </div>`;
+}
+
 function renderAgents(snap) {
   const tree = snap.oc.tree || [];
   const tails = snap.oc.tails || {};
   const el = $("agents");
   const multi = (snap.servers || []).filter((s) => s.up).length > 1;
+  $("sess-count").textContent = tree.length ? `· ${tree.length} session${tree.length > 1 ? "s" : ""}` : "";
   if (!tree.length) { el.textContent = snap.oc.up
     ? "no sessions yet — start one anywhere in the harness" : "no opencode servers reachable"; return; }
-  const html = tree.map((s) =>
-    `<div class="sess">
-      <div class="row"><span class="name">${esc(s.title)}</span>
-      ${s.dir ? `<span class="meta" title="${esc(s.dir)}">${esc(s.dir)}</span>` : ""}
-      <span class="src">${ago(s.updated)}</span></div>
-      ${agentCard(s, tails[s.id], false, multi)}
-      ${(s.children || []).map((c) => agentCard(c, tails[c.id], true, multi)).join("")}
-    </div>`).join("");
+
+  const keyOf = (s) => `${s.srv}:${s.id}`;
+  if (!selectedKey || !tree.some((s) => keyOf(s) === selectedKey))
+    selectedKey = keyOf(tree[0]); // default: most recently active
+  const sel = tree.find((s) => keyOf(s) === selectedKey) || tree[0];
+
+  const tabs = tree.map((s) =>
+    `<button class="stab ${keyOf(s) === selectedKey ? "on" : ""}" data-k="${keyOf(s)}"
+      title="${esc(s.title)}">${esc((s.title || "session").slice(0, 28))}</button>`).join("");
+  const html = `<div class="tabbar">${tabs}</div>` + sessionHtml(sel, tails, multi);
+
   const bodyScroll = el.scrollTop;
   const tailScrolls = [...el.querySelectorAll(".tail")].map((t) => t.scrollTop);
   if (el.dataset.sig !== html) {
@@ -271,6 +295,14 @@ function renderAgents(snap) {
     });
   }
 }
+
+// tab clicks (delegated — survives the 1 Hz re-render)
+$("agents").addEventListener("click", (e) => {
+  const tab = e.target.closest(".stab");
+  if (!tab) return;
+  selectedKey = tab.dataset.k;
+  if (window.lastSnap) renderAgents(window.lastSnap);
+});
 
 // ---------------------------------------------------------------- charts --
 function drawChart(canvas, series, band, color) {
