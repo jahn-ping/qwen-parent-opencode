@@ -77,10 +77,11 @@
   .bar.warn .fill { background: linear-gradient(90deg, #9e6a03, #d29922); }
   .bar.dead .fill { background: linear-gradient(90deg, #b62324, #f85149); }
   .bar .stop { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--red); }
-  /* ticker + engine log share the bottom row */
-  #bottomrow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
-               margin: 0 10px 10px; height: 220px; flex: none; }
-  #bottomrow .panel { height: 100%; min-height: 0; }
+  /* flow + engine log: stacked full-width rows; engine lines scroll horizontally */
+  #bottomrow { display: flex; flex-direction: column; gap: 10px; margin: 0 10px 10px; flex: none; }
+  #bottomrow .panel { min-height: 0; }
+  #panel-flow { height: 150px; }
+  #panel-eng { height: 235px; }
   #ticker { font-family: var(--mono); font-size: 11.5px; }
   #ticker .line { padding: 1px 0; color: var(--dim); white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; }
@@ -88,10 +89,10 @@
   #ticker .line.narr { color: var(--green); font-weight: 600; }
   #ticker .line.msg  { color: var(--fg); }
   #ticker .line .kind { color: var(--blue); }
-  #englog { font-family: var(--mono); font-size: 11.5px; }
-  #englog .eline { padding: 1px 0; color: var(--dim); white-space: nowrap; overflow: hidden;
-                   text-overflow: ellipsis; }
-  #englog .eline .ts { color: #484f58; margin-right: 6px; }
+  #englog { font-family: var(--mono); font-size: 11.5px; overflow: auto; }
+  #englog .eline { padding: 1px 0; color: var(--dim); white-space: pre;
+                   width: max-content; min-width: 100%; }
+  #englog .eline .ts { color: #484f58; margin-right: 6px; position: sticky; left: 0; }
   #englog .eline.warn { color: var(--yellow); }
   #englog .eline.err { color: var(--red); }
   #englog .eline.timing { color: var(--green); }
@@ -151,11 +152,11 @@
 </main>
 
 <div id="bottomrow">
-  <div class="panel">
+  <div class="panel" id="panel-flow">
     <h2>Flow — events &amp; ▸ narration</h2>
     <div class="panelbody" id="ticker"></div>
   </div>
-  <div class="panel">
+  <div class="panel" id="panel-eng">
     <h2 id="engtitle">Engine — ninfer</h2>
     <div class="panelbody" id="englog"></div>
   </div>
