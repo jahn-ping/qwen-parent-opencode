@@ -253,7 +253,18 @@ function tailFromMessages(msgs) {
       const p = parts[j];
       if (p.type === "reasoning" && p.text) return { label: "thinking", text: p.text };
       if (p.type === "text" && p.text) return { label: "text", text: p.text };
-      if (p.type === "tool" && p.tool) return { label: `tool:${p.tool}`, text: p.state || "" };
+      if (p.type === "tool" && p.tool) {
+        // tool state is an object ({status, input, output…}) in current
+        // opencode — render something human, never "[object Object]"
+        let text = "";
+        const st = p.state;
+        if (typeof st === "string") text = st;
+        else if (st && typeof st === "object") {
+          text = typeof st.output === "string" && st.output ? st.output
+            : st.input ? JSON.stringify(st.input) : JSON.stringify(st);
+        }
+        return { label: `tool:${p.tool}`, text: text || "" };
+      }
     }
   }
   return null;
