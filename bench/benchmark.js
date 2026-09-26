@@ -122,7 +122,12 @@ async function sectionNinfer() {
       expected: "qwen3.8-27b", got: id, note: "config must match this id" };
   });
   await check("ninfer", "GET /slots — 2 lanes", async () => {
-    const s = await jget(`${CFG.nBase}/slots`);
+    let s;
+    try { s = await jget(`${CFG.nBase}/slots`); }
+    catch (e) {
+      return { status: "warn", expected: "200 JSON array", got: String(e.message || e),
+        note: "fork appears to disable /slots — lane view + slot-rate fallback unavailable; add --metrics to serve flags for exact counters" };
+    }
     n.slotsSample = redact(Array.isArray(s) ? s[0] : s);
     const lanes = Array.isArray(s) ? s.length : 0;
     lanesBusyBefore = Array.isArray(s) ? s.filter((x) => x.is_processing).length : 0;
@@ -152,6 +157,7 @@ async function streamChat(prompt, maxTokens) {
     signal: AbortSignal.timeout(180000),
     body: JSON.stringify({
       model: "qwen3.8-27b", stream: true, max_tokens: maxTokens,
+      stream_options: { include_usage: true }, // final chunk carries usage (llama.cpp-family)
       messages: [{ role: "user", content: prompt }],
     }),
   });
@@ -181,8 +187,11 @@ async function streamChat(prompt, maxTokens) {
   }
   const total = Date.now() - t0;
   const outTok = usage && (usage.completion_tokens ?? usage.computed_completion_tokens) || chunks;
+  // Some forks ignore stream_options — fall back to a chars/4 token estimate.
   const inTok = usage && usage.prompt_tokens || null;
-  return { ttft, totalMs: total, outTok, inTok, chunks, usage: usage || null };
+  const inTokEst = Math.round(prompt.length / 4);
+  return { ttft, totalMs: total, outTok, inTok, inTokEst,
+    inTokEstimated: !inTok, usage: usage || null };
 }
 
 async function sectionBench() {
@@ -201,10 +210,11 @@ async function sectionBench() {
   await check("bench", "prefill long (~3.5K tok)", async () => {
     const filler = ("The quick brown fox jumps over the lazy dog while the turbine spins. ").repeat(290);
     const r = await streamChat(`${filler}\nReply with the single word: ok`, 8);
-    const pp = r.inTok && r.ttft ? (r.inTok / (r.ttft / 1000)) : 0;
+    const inTok = r.inTok || r.inTokEst;
+    const pp = inTok && r.ttft ? (inTok / (r.ttft / 1000)) : 0;
     b.prefillLong = { ...r, ppTokPerSec: +pp.toFixed(0) };
     return { status: pp >= 100 ? "pass" : "warn", expected: "≥100 tok/s (verified band 205–614)",
-      got: `${pp.toFixed(0)} tok/s over ${r.inTok} prompt tok, ttft ${r.ttft}ms` };
+      got: `${pp.toFixed(0)} tok/s over ${inTok} prompt tok (${r.inTokEstimated ? "estimated" : "usage-reported"}), ttft ${r.ttft}ms` };
   });
   await check("bench", "2-lane concurrent decode", async () => {
     const [a, c] = await Promise.all([
@@ -268,35 +278,47 @@ async function sectionOpencode() {
       note: extra.length ? `unexpected providers: ${extra.join(", ")}` : "" };
   });
   await check("opencode", "SSE /event — 8s sample", async () => {
-    const r = await fetch(`${CFG.ocBase}/event`, { headers: ocHeaders,
-      signal: AbortSignal.timeout(10000) });
-    if (!r.ok || !r.body) throw new Error(`/event ${r.status}`);
-    const reader = r.body.getReader();
-    const dec = new TextDecoder();
+    const ctrl = new AbortController();
     const kinds = {}; const samples = [];
-    let buf = ""; const t0 = Date.now();
-    while (Date.now() - t0 < 8000) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += dec.decode(value, { stream: true });
-      let i;
-      while ((i = buf.indexOf("\n\n")) >= 0) {
-        const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
-        for (const line of chunk.split("\n")) {
-          if (!line.startsWith("data:")) continue;
-          try {
-            const ev = JSON.parse(line.slice(5).trim());
-            kinds[ev.type] = (kinds[ev.type] || 0) + 1;
-            if (samples.length < 3) samples.push(redact(ev));
-          } catch { /* partial frame at cutoff */ }
+    try {
+      const r = await fetch(`${CFG.ocBase}/event`, { headers: ocHeaders, signal: ctrl.signal });
+      if (!r.ok || !r.body) throw new Error(`/event ${r.status}`);
+      const reader = r.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      const deadline = Date.now() + 8000;
+      while (Date.now() < deadline) {
+        // Race the read against a tick so a silent stream can't block past the
+        // deadline (a hard abort here would throw away the whole tally).
+        const step = await Promise.race([
+          reader.read(),
+          new Promise((res) => setTimeout(() => res("tick"), 1000)),
+        ]);
+        if (step === "tick") continue;
+        if (step.done) break;
+        buf += dec.decode(step.value, { stream: true });
+        let i;
+        while ((i = buf.indexOf("\n\n")) >= 0) {
+          const chunk = buf.slice(0, i); buf = buf.slice(i + 2);
+          for (const line of chunk.split("\n")) {
+            if (!line.startsWith("data:")) continue;
+            try {
+              const ev = JSON.parse(line.slice(5).trim());
+              kinds[ev.type] = (kinds[ev.type] || 0) + 1;
+              if (samples.length < 3) samples.push(redact(ev));
+            } catch { /* partial frame at cutoff */ }
+          }
         }
       }
+    } catch (e) {
+      if (!/abort/i.test(String((e && e.name) || e))) throw e; // real error, not our cutoff
+    } finally {
+      try { ctrl.abort(); } catch { /* already closed */ }
     }
-    try { await reader.cancel(); } catch { /* already closed */ }
     o.eventKinds = kinds; o.eventSamples = samples;
     const total = Object.values(kinds).reduce((a, x) => a + x, 0);
     return { status: total > 0 ? "pass" : "warn", expected: "events flowing",
-      got: `${total} events / 8s — ${Object.keys(kinds).slice(0, 8).join(", ")}` };
+      got: `${total} events / 8s — ${Object.keys(kinds).slice(0, 8).join(", ") || "none (idle server?)"}` };
   });
 }
 
@@ -305,7 +327,8 @@ async function sectionDashboard(dashBefore) {
   await check("dashboard", "page + snapshot", async () => {
     const page = await tget(`${CFG.dashBase}/`, 4000);
     const snap = await jget(`${CFG.dashBase}/snapshot`, {}, 4000).catch(() => null);
-    d.before = dashBefore ? { ppLen: dashBefore.ppSeries.length, tgLen: dashBefore.tgSeries.length } : null;
+    d.before = dashBefore && dashBefore.ninfer
+      ? { ppLen: dashBefore.ninfer.ppSeries.length, tgLen: dashBefore.ninfer.tgSeries.length } : null;
     d.after = snap ? { ppLen: snap.ninfer.ppSeries.length, tgLen: snap.ninfer.tgSeries.length,
       rateSource: snap.ninfer.rateSource, ocUp: snap.oc.up, quota: snap.quota.present } : null;
     if (!page.ok || !snap) return { status: "warn", got: `page ${page.status}, snapshot ${snap ? "ok" : "down"}`,

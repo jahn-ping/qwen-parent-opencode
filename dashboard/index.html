@@ -268,11 +268,10 @@ function renderCharts(snap) {
 
 // ----------------------------------------------------------------- quota --
 
-function quotaRow(name, used, budget, trips, stopLine) {
-  const pct = budget ? Math.min(100, (used / (budget + (stopLine ? (budget / 0.75) - budget : 0) || budget)) * 100) : 0;
+function quotaRow(name, used, budget, trips, stopLine, ceil) {
   const dead = trips > 0;
-  const warn = !dead && budget && used >= stopLine * 0.8;
-  const total = stopLine ? Math.round(stopLine / 0.75) : budget; // 375/500 → 25% held back
+  const warn = !dead && stopLine && used >= stopLine * 0.8;
+  const total = ceil || (stopLine ? Math.round(stopLine / 0.75) : budget); // 375 stop on 500 ceiling = 25% held back
   const width = total ? Math.min(100, (used / total) * 100) : 0;
   const stopPct = total ? (stopLine / total) * 100 : 75;
   return `<div class="qrow">
@@ -292,8 +291,8 @@ function renderQuota(snap) {
   $("quotapanel").style.display = "";
   const kv = q.kv || {};
   $("quotabody").innerHTML =
-    quotaRow("MiMo (opencode zen)", kv.zused ?? 0, kv.zbudget ?? 0, kv.ztrips ?? 0, kv.zbudget ?? 375) +
-    quotaRow("NVIDIA NIM", kv.nused ?? 0, kv.nbudget ?? 0, kv.ntrips ?? 0, null);
+    quotaRow("MiMo (opencode zen)", kv.zused ?? 0, kv.zbudget ?? 0, kv.ztrips ?? 0, kv.zbudget ?? 375, kv.zceil) +
+    quotaRow("NVIDIA NIM", kv.nused ?? 0, kv.nbudget ?? 0, kv.ntrips ?? 0, null, kv.nceil);
 }
 
 // --------------------------------------------------------------- ticker --
