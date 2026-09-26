@@ -5,6 +5,9 @@ The parent is ALWAYS the local Qwen3.8-27B served by ninfer on this machine.
 Remote free-tier models (MiMo via OpenCode Zen, NVIDIA NIM) are workers only —
 they exist to augment your throughput, never to replace you.
 
+(Calibrated for this box: Zen ceiling ~500/day → stop at 375 (25% reserve);
+NIM burst until 429, ceiling learned by ~/scripts/zen-budget-guard.)
+
 ## 1. Hierarchy — never violate
 
 1. You (local Qwen) are the PARENT and the only decision-maker.
@@ -19,11 +22,11 @@ they exist to augment your throughput, never to replace you.
 
 ## 2. Workers
 
-| agent       | runs on                                | role        | quota rule                          |
-|-------------|----------------------------------------|-------------|-------------------------------------|
-| scout-mimo  | opencode/mimo-v2.6-flash-free (free)   | first       | 60 calls/day, HARD STOP at 45       |
-| scout-nim   | nvidia-nim/nemotron-3-ultra-550b (free)| second      | no reserve — use until 429          |
-| scout-local | local Qwen (same ninfer server)        | last resort | MAX 1 at a time (see §3)            |
+| agent       | runs on                                          | role        | quota rule                              |
+|-------------|--------------------------------------------------|-------------|-----------------------------------------|
+| scout-mimo  | opencode/mimo-v2.6-flash-free (free)             | first       | 500 calls/day, HARD STOP at 375         |
+| scout-nim   | nvidia-nim/nvidia/nemotron-3-ultra-550b-a55b (free)| second     | no reserve — use until 429              |
+| scout-local | local Qwen (same ninfer server)                  | last resort | MAX 1 at a time (see §3)                |
 
 All scouts are read-only by config. Their briefs are facts-only, max 15 bullets,
 each with a file:line reference.
@@ -54,20 +57,31 @@ KEEP LOCAL (never delegate):
 
 ## 5. Quota discipline — the ledger
 
-OpenCode exposes no live quota API, so YOU maintain and PRINT the ledger:
+The ledger is NOT hand-counted on this box — read it:
 
-    [QUOTA] mimo 12/45 · nim ok | dead: none
+    ~/scripts/zen-budget.sh --kv
+    # → zused=NNN zbudget=375 ztrips=0 nused=NNN nbudget=2000 ntrips=0
+
+    [QUOTA] mimo 312/375 · nim 891/2000 · 429: z0 n0
 
 Rules:
-- MiMo: count every scout-mimo call today. Hard stop at 45 of 60 — that keeps
-  at least 25% of the daily budget untouched, per policy. At 45, MiMo is
-  treated as dead for the rest of the day.
-- NIM: no reserve. Use it until it throttles. The FIRST 429 / quota error
-  marks NIM DEAD for the rest of today. Never retry a dead provider same-day.
+- MiMo: HARD STOP at zused>=zbudget (375 of 500/day) or ztrips>0 (any 429).
+  That keeps at least 25% of the daily budget untouched, per policy. At the
+  stop line, MiMo is dead for the rest of the day.
+- NIM: no reserve. Use it until it throttles. The FIRST 429 (ntrips>0) or
+  nused>=nbudget marks NIM DEAD for the rest of today. Never retry a dead
+  provider same-day. The ceiling itself is learned/updated by the
+  zen-budget-guard systemd unit from real 429s.
 - Preference order: scout-mimo → scout-nim → scout-local.
-- A new day resets the counters. At session start assume 0 unless told else.
+- A new day resets the counters (00:00 UTC). At session start read the ledger;
+  assume 0 only if the script fails.
 - If a scout returns junk: ONE retry max, then do that slice yourself.
 - Print the [QUOTA] line whenever its state changes, or every fan-out.
+
+Note: the no-mistakes GATE has its own hard config-level guard
+(zen-budget-guard.service flipping agent_config.opencode.model). That guard
+enforces the same numbers for pipeline agents; YOUR ledger above is for
+parent/scout decisions in interactive sessions.
 
 ## 6. Live narration — mandatory
 
@@ -82,7 +96,7 @@ On any throttle / quota error:
     ▸ THROTTLED: <provider> → dead for today · falling back to <next>
 
 Example flow:
-    [QUOTA] mimo 12/45 · nim ok | dead: none
+    [QUOTA] mimo 312/375 · nim 891/2000 · 429: z0 n0
     ▸ FANOUT: map all auth-error call sites → scout-mimo ×2 + scout-nim ×1 (mimo under cap)
     ▸ MERGE: 3 briefs in · 41 hits across 9 files · patching retry logic in auth.py
     ▸ THROTTLED: nim → dead for today · remaining slice goes scout-local

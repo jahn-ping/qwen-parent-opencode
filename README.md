@@ -20,7 +20,7 @@ the remotes appear nowhere as a primary.
           │ opencode/        │ │ nvidia-nim/   │ │ local Qwen      │
           │ mimo-v2.6-       │ │ nemotron-3-   │ │ LAST resort,    │
           │ flash-free       │ │ ultra-550b    │ │ max 1 at a time │
-          │ stop at 45/60    │ │ until 429     │ │ (shares slots   │
+           │ stop at 375/500  │ │ until 429     │ │ (shares slots   │
           │ (≥25% reserved)  │ │ → dead today  │ │  with parent)   │
           └──────────────────┘ └───────────────┘ └─────────────────┘
                  read-only workers: facts-only briefs, ≤15 bullets, file:line
@@ -56,21 +56,24 @@ cd qwen-parent-opencode
 ## First-run checklist (V100 box)
 
 1. **NVIDIA NIM key** (free): sign in at https://build.nvidia.com, open any
-   model, "Get API Key" → `export NVIDIA_API_KEY=nvapi-...` in `~/.bashrc`.
-   The config reads it via `{env:NVIDIA_API_KEY}` — the key is never stored
-   in this repo.
+   model, "Get API Key" → run `opencode`, then `/connect` → NVIDIA NIM.
+   The key lands in `~/.local/share/opencode/auth.json` — never in this repo.
 2. **MiMo free models**: run `opencode`, then `/connect` → OpenCode Zen
    (paste the Zen API key). `opencode/mimo-v2.6-flash-free` is $0.
-3. **Verify model ids** (the two known unknowns):
+3. **Verify model ids** (both already calibrated — just confirm):
    ```bash
    curl -s http://127.0.0.1:8080/v1/models
-   # → if the served id is not exactly "qwen3_8_27b_nvfp4",
-   #    fix it in opencode.json (provider "ninfer" + every "ninfer/..." ref)
+   # → id must be "qwen3.8-27b" (ninfer serves it under the short id,
+   #    NOT the file name "qwen3_8_27b_nvfp4"). If different, fix
+   #    opencode.json (provider "ninfer" + every "ninfer/..." ref).
 
-   opencode models | grep -E "ninfer|nvidia|opencode"
-   # → if NIM's nemotron doesn't resolve, its catalog id may be namespaced
-   #   like "nvidia/nemotron-3-ultra-550b" — fix the key under provider
-   #   "nvidia-nim" AND the scout-nim model ref to match.
+   opencode models
+   # → expect exactly 4-ish: ninfer/qwen3.8-27b,
+   #   nvidia-nim/nvidia/nemotron-3-ultra-550b-a55b,
+   #   nvidia-nim/qwen/qwen3-coder-480b-a35b-instruct,
+   #   opencode/mimo-v2.6-flash-free
+   #   (enabled_providers + the opencode whitelist hide everything else —
+   #    openrouter's 385 catalog entries etc.)
    ```
 4. **See the hierarchy**: start `opencode` in your project → `/agents` should
    list `scout-mimo`, `scout-nim`, `scout-local`.
@@ -83,7 +86,7 @@ You should see (this is the "live update window" — thinking plus flow):
 ```
 /thinking                     ← toggle ON once; ninfer preserves thinking,
                                 so the parent's reasoning streams live
-[QUOTA] mimo 0/45 · nim ok | dead: none
+[QUOTA] mimo 0/375 · nim ok | dead: none
 ▸ FANOUT: map auth-error call sites → scout-mimo ×2 + scout-nim ×1 (mimo under cap)
 ▸ MERGE: 3 briefs in · 41 hits across 9 files · patching retry logic in auth.py
 ```
@@ -105,8 +108,8 @@ Live-visibility cheatsheet:
 
 | knob                          | where                              | default |
 |-------------------------------|------------------------------------|---------|
-| MiMo daily cap / stop         | `AGENTS.md` §2 table + §5 rules    | 60 / 45 |
-| which NIM model scouts use    | `opencode.json` → scout-nim.model  | nemotron-3-ultra-550b |
+| MiMo daily cap / stop         | `AGENTS.md` §2 table + §5 rules    | 500 / 375 |
+| which NIM model scouts use    | `opencode.json` → scout-nim.model  | nvidia/nemotron-3-ultra-550b-a55b |
 | more/fewer parallel scouts    | `AGENTS.md` §3                     | 3–4 remote, 1 local |
 | brief size (context pressure) | scout prompts in `opencode.json`   | 15 bullets |
 | housekeeping model            | `small_model` in `opencode.json`   | mimo-v2.6-flash-free |
@@ -119,7 +122,8 @@ line keeps the last 25% untouched.
 
 Neither free gateway exposes a live "percent quota remaining" API, so the
 25%-reserve on MiMo is enforced by the ledger protocol in `AGENTS.md` §5 —
-the parent counts its own scout calls and stops itself at 45/60. NIM needs
+the parent reads its own ledger (`~/scripts/zen-budget.sh --kv` on this box)
+and stops itself at 375/500. NIM needs
 no emulation: it throttles with a real 429, which the protocol turns into
 "dead for today". If you ever want a **hard** gate instead of prompt-level
 discipline, put a LiteLLM proxy in front of both providers with per-key

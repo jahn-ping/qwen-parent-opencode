@@ -33,12 +33,18 @@ for f in opencode.json AGENTS.md; do
   echo "  installed -> $target"
 done
 
+if [[ "$SCOPE" == "global" ]]; then
+  # opencode.json "instructions" points at this exact path
+  cp "$SRC/AGENTS.md" "$DEST/qwen-parent-AGENTS.md"
+  echo "  installed -> $DEST/qwen-parent-AGENTS.md (instructions path)"
+fi
+
 echo
 echo "Done ($SCOPE scope). Next steps:"
-echo "  1. NVIDIA key (free tier):  export NVIDIA_API_KEY=nvapi-xxxx   # add to ~/.bashrc"
-echo "     (get one at https://build.nvidia.com — sign in, any model, 'Get API Key')"
+echo "  1. NVIDIA NIM key (free): run 'opencode' -> /connect -> NVIDIA NIM"
+echo "     (key is stored in ~/.local/share/opencode/auth.json, never in this repo)"
 echo "  2. MiMo free models:        run 'opencode', then /connect -> OpenCode Zen"
 echo "  3. Sanity checks:"
-echo "       curl -s http://127.0.0.1:8080/v1/models   # model id must match opencode.json"
-echo "       opencode models                           # ninfer/nvidia-nim/opencode all listed"
+echo "       curl -s http://127.0.0.1:8080/v1/models   # served id must be qwen3.8-27b"
+echo "       opencode models                           # ninfer/nvidia-nim/opencode only"
 echo "  4. Start: 'opencode' in your project, then /agents to see the scouts."
