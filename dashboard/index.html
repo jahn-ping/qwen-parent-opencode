@@ -12,7 +12,8 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg);
-         font: 13px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif; }
+         font: 13px/1.45 -apple-system, "Segoe UI", Roboto, sans-serif;
+         height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
   header { display: flex; align-items: center; gap: 14px; padding: 8px 14px;
            border-bottom: 1px solid var(--edge); background: var(--panel); }
   header h1 { font-size: 14px; margin: 0; letter-spacing: .3px; }
@@ -21,7 +22,7 @@
   .dot.up { background: var(--green); }
   .src { color: var(--dim); font-family: var(--mono); font-size: 12px; }
   main { display: grid; grid-template-columns: minmax(380px, 1fr) 420px;
-         gap: 10px; padding: 10px; height: calc(100vh - 41px - 220px); min-height: 380px; }
+         gap: 10px; padding: 10px; flex: 1; min-height: 0; }
   .col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
   .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
            overflow: hidden; display: flex; flex-direction: column; }
@@ -74,7 +75,7 @@
   .bar.dead .fill { background: linear-gradient(90deg, #b62324, #f85149); }
   .bar .stop { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--red); }
   /* ticker */
-  #tickerwrap { height: 220px; }
+  #tickerwrap { height: 205px; flex: none; margin: 0 10px 10px; }
   #ticker { font-family: var(--mono); font-size: 11.5px; }
   #ticker .line { padding: 1px 0; color: var(--dim); white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; }
@@ -257,7 +258,11 @@ function renderCharts(snap) {
   $("queue").textContent = nf.deferred != null ? nf.deferred : "–";
   $("busy").textContent = nf.processing != null ? nf.processing : "–";
   $("nf-note").textContent = nf.up
-    ? (nf.metricsPrefix ? `metrics: ${nf.metricsPrefix}… (rate from counter deltas)` : "/metrics off → lanes only (start ninfer with --metrics)")
+    ? (nf.rateSource === "metrics"
+        ? `exact rates from /metrics (${nf.metricsPrefix}… counter deltas)`
+        : nf.rateSource === "slots"
+          ? "rates from /slots lane deltas — add --metrics to ninfer for exact server-wide counters"
+          : "idle — no lane processing")
     : "ninfer :8080 unreachable";
 }
 
@@ -321,20 +326,35 @@ function applySnapshot(snap) {
 
 const NARR = /[▸▲]|\[QUOTA\]|FANOUT|MERGE|THROTTLED/;
 
+// One line per forwarded event (the bridge coalesces the per-token flood).
+// Narration (▸ / [QUOTA] lines) is shown as the agent's actual text; raw
+// bus events stay dim so the two never fight for the panel.
+function onOcEvent(ev) {
+  const { t, kind, summary, text } = ev;
+  const body = (text || "").trim();
+  const isNarr = NARR.test(body) || NARR.test(summary || "");
+  if (isNarr) {
+    pushTicker(t, esc(body || summary), "narr");
+  } else {
+    const cls = kind.includes("message") || kind.includes("session") ? "msg" : "";
+    pushTicker(t, `<span class="kind">${esc(kind)}</span> ${esc(summary || "")}`, cls);
+  }
+}
+
 function connect() {
   const es = new EventSource("/stream");
   es.onmessage = (m) => {
     let msg; try { msg = JSON.parse(m.data); } catch { return; }
     if (msg.type === "hello") { CFG = msg.cfg; $("oc-note").textContent = ""; }
-    else if (msg.type === "snapshot") applySnapshot(msg.data);
-    else if (msg.type === "oc-event") {
-      const { t, kind, summary } = msg.ev;
-      const text = `${esc(kind)} ${esc(summary || "")}`;
-      const isNarr = NARR.test(summary || "");
-      pushTicker(t, text, isNarr ? "narr" : "");
-      if (kind.includes("message")) pushTicker(t, text, "msg");
-      renderTicker();
+    else if (msg.type === "snapshot") {
+      applySnapshot(msg.data);
+      // backfill the ticker once so a fresh page isn't empty
+      if (!tickerLines.length && msg.data.events) {
+        for (const e of msg.data.events.slice(-60)) onOcEvent(e);
+        renderTicker();
+      }
     }
+    else if (msg.type === "oc-event") { onOcEvent(msg.ev); renderTicker(); }
   };
   es.onerror = () => { $("foot").textContent = "reconnecting…"; };
 }

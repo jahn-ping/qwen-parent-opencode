@@ -50,13 +50,15 @@ const MAX_SAMPLES = 900; // 1 Hz * 15 min
 const state = {
   oc: { up: false, sessions: {}, statuses: {}, tree: [], tails: {}, serverConnected: false },
   ninfer: {
-    up: false, metricsPrefix: null, slots: [], health: null,
+    up: false, metricsPrefix: null, slots: [],
     ppSeries: [], tgSeries: [], // [{t, v}]
-    pp: 0, tg: 0, processing: 0, deferred: 0,
-    counters: null, // last {prompt, predicted, t}
+    pp: 0, tg: 0, processing: null, deferred: null,
+    counters: null,     // last /metrics counters {prompt, predicted, t}
+    slotPrev: {},       // per-lane last sample {task, prompt, decoded}
+    lastT: 0,
   },
   quota: { present: false, raw: null, kv: null, ts: 0 },
-  events: [], // ring buffer of forwarded opencode events {t, type, summary}
+  events: [], // ring buffer of forwarded opencode events {t, kind, summary, text}
 };
 
 const clients = new Set(); // browser SSE connections
@@ -80,26 +82,59 @@ async function jfetch(url, opts = {}, timeoutMs = 5000) {
   }
 }
 
-// ------------------------------------------------------ opencode polling ----
+// ------------------------------------------------------ opencode events ----
+
+// message.updated fires on every streamed token — forwarding each one floods
+// the ticker. High-frequency kinds are coalesced to one line per session per
+// window; everything else (finished, error, session, permission…) passes now.
+const COALESCE_MS = 1500;
+const coalesce = new Map(); // key -> last-forwarded ts
+
+function extractText(p) {
+  // Shapes vary by version; look in the usual places for a text part.
+  const part = p.part ||
+    (p.snapshot && (p.snapshot.part ||
+      (Array.isArray(p.snapshot.parts) && p.snapshot.parts[p.snapshot.parts.length - 1]))) ||
+    (p.message && p.message.part);
+  if (part && typeof part.text === "string") return part.text;
+  if (typeof p.text === "string") return p.text;
+  return null;
+}
 
 function summarizeEvent(ev) {
-  // opencode bus events are {type, properties} — shapes vary by version, so
-  // this stays defensive and the UI shows the raw type when unsure.
   const p = ev && ev.properties ? ev.properties : {};
   const bit = [];
   if (p.sessionID) bit.push(String(p.sessionID).slice(0, 8));
   if (p.agent) bit.push(p.agent);
-  if (typeof p.model === "object" && p.model && p.model.modelID) bit.push(p.model.modelID);
-  else if (typeof p.model === "string") bit.push(p.model);
+  const model = p.model && typeof p.model === "object" ? p.model.modelID : p.model;
+  if (model) bit.push(model);
   if (p.role) bit.push(p.role);
   const part = p.part || p.snapshot || p.message;
   if (part && part.type) bit.push(part.type);
   return bit.join(" ");
 }
 
-function rememberEvent(ev) {
-  state.events.push({ t: Date.now(), type: ev.type || "?", summary: summarizeEvent(ev) });
+function rememberAndForward(ev) {
+  const kind = ev.type || "?";
+  const p = ev.properties || {};
+  const text = extractText(p);
+  const summary = summarizeEvent(ev);
+  const sid = p.sessionID || "";
+
+  if (kind.startsWith("message.")) {
+    const key = `${sid}|${kind}`;
+    const now = Date.now();
+    const last = coalesce.get(key) || 0;
+    const terminal = kind.includes("finished") || kind.includes("error") ||
+      kind.includes("aborted");
+    if (!terminal && now - last < COALESCE_MS) return; // coalesce the flood
+    coalesce.set(key, now);
+  }
+
+  const rec = { t: Date.now(), kind, summary, text: text ? String(text).slice(-300) : null };
+  state.events.push(rec);
   if (state.events.length > 400) state.events.splice(0, state.events.length - 400);
+  broadcast({ type: "oc-event", ev: rec });
 }
 
 async function ocEventPump() {
@@ -107,8 +142,7 @@ async function ocEventPump() {
   // loop; a failed connection just marks the source down and retries.
   for (;;) {
     try {
-      const ctrl = new AbortController();
-      const r = await fetch(`${ocBase}/event`, { headers: ocHeaders, signal: ctrl.signal });
+      const r = await fetch(`${ocBase}/event`, { headers: ocHeaders });
       if (!r.ok || !r.body) throw new Error(`event stream ${r.status}`);
       state.oc.up = true;
       state.oc.serverConnected = true;
@@ -130,8 +164,7 @@ async function ocEventPump() {
             if (!payload) continue;
             let ev;
             try { ev = JSON.parse(payload); } catch { continue; }
-            rememberEvent(ev);
-            broadcast({ type: "oc-event", ev: { t: Date.now(), kind: ev.type, summary: summarizeEvent(ev) } });
+            rememberAndForward(ev);
           }
         }
       }
@@ -174,7 +207,7 @@ async function ocPoll() {
     for (const s of sessions || []) {
       if (s.parentID && byId[s.parentID]) (children[s.parentID] ||= []).push(s);
     }
-    const tree = (sessions || [])
+    state.oc.tree = (sessions || [])
       .filter((s) => !s.parentID || !byId[s.parentID])
       .sort((a, b) => (b.time?.updated || 0) - (a.time?.updated || 0))
       .slice(0, 6)
@@ -188,7 +221,6 @@ async function ocPoll() {
           updated: c.time?.updated || 0,
         })),
       }));
-    state.oc.tree = tree;
 
     // tails for the most recently active sessions (bounded to keep it light)
     const active = (sessions || [])
@@ -228,14 +260,39 @@ function parsePrometheus(text) {
 
 async function ninferPoll() {
   const now = Date.now();
+  const dt = state.ninfer.lastT ? (now - state.ninfer.lastT) / 1000 : 0;
+  state.ninfer.lastT = now;
+
+  let slotRate = null;
   try {
     // /slots is on by default in llama.cpp servers; shape per-slot objects.
     const slots = await jfetch(`${nBase}/slots`, {}, 3000);
     state.ninfer.slots = Array.isArray(slots) ? slots : [];
     state.ninfer.up = true;
+
+    // Fallback rates from per-lane deltas — works WITHOUT /metrics, which is
+    // exactly what we need while the container runs without --metrics.
+    const prevMap = state.ninfer.slotPrev;
+    const newPrev = {};
+    let ppAcc = 0, tgAcc = 0, sawLane = false;
+    for (const s of state.ninfer.slots) {
+      const nPrompt = s.n_prompt_tokens_processed || 0;
+      const nDec = (s.next_token && s.next_token[0] && s.next_token[0].n_decoded) || 0;
+      const prev = prevMap[s.id];
+      if (s.is_processing && prev && prev.task === s.id_task && dt > 0.2) {
+        ppAcc += Math.max(0, nPrompt - prev.prompt);
+        tgAcc += Math.max(0, nDec - prev.decoded);
+        sawLane = true;
+      }
+      newPrev[s.id] = { task: s.id_task, prompt: nPrompt, decoded: nDec };
+    }
+    state.ninfer.slotPrev = newPrev;
+    if (sawLane) slotRate = { pp: ppAcc / dt, tg: tgAcc / dt };
   } catch {
     state.ninfer.up = false;
   }
+
+  let metricsRate = null;
   try {
     const r = await fetch(`${nBase}/metrics`, { signal: AbortSignal.timeout(3000) });
     if (r.ok) {
@@ -249,24 +306,30 @@ async function ninferPoll() {
         state.ninfer.processing = m[`${pfx}requests_processing`] ?? null;
         state.ninfer.deferred = m[`${pfx}requests_deferred`] ?? null;
         const prev = state.ninfer.counters;
-        if (prev && typeof prompt === "number" && typeof predicted === "number") {
-          const dt = (now - prev.t) / 1000;
-          if (dt > 0.2) {
-            const pp = Math.max(0, (prompt - prev.prompt) / dt);
-            const tg = Math.max(0, (predicted - prev.predicted) / dt);
-            state.ninfer.pp = pp; state.ninfer.tg = tg;
-            state.ninfer.ppSeries.push({ t: now, v: pp });
-            state.ninfer.tgSeries.push({ t: now, v: tg });
-            if (state.ninfer.ppSeries.length > MAX_SAMPLES) state.ninfer.ppSeries.shift();
-            if (state.ninfer.tgSeries.length > MAX_SAMPLES) state.ninfer.tgSeries.shift();
-          }
+        if (prev && typeof prompt === "number" && typeof predicted === "number" && dt > 0.2) {
+          metricsRate = {
+            pp: Math.max(0, (prompt - prev.prompt) / dt),
+            tg: Math.max(0, (predicted - prev.predicted) / dt),
+          };
         }
         state.ninfer.counters = { prompt, predicted, t: now };
       }
     }
   } catch {
-    // /metrics disabled (--metrics flag) — throughput falls back to /slots only
+    // /metrics disabled (--metrics flag) — slot-derived rates carry the charts
   }
+
+  // Exact /metrics counters win; per-lane /slots deltas are the fallback.
+  const rate = metricsRate || slotRate;
+  if (rate) {
+    state.ninfer.pp = rate.pp;
+    state.ninfer.tg = rate.tg;
+    state.ninfer.ppSeries.push({ t: now, v: rate.pp });
+    state.ninfer.tgSeries.push({ t: now, v: rate.tg });
+    if (state.ninfer.ppSeries.length > MAX_SAMPLES) state.ninfer.ppSeries.shift();
+    if (state.ninfer.tgSeries.length > MAX_SAMPLES) state.ninfer.tgSeries.shift();
+  }
+  state.ninfer.rateSource = metricsRate ? "metrics" : (slotRate ? "slots" : null);
 }
 
 // ------------------------------------------------------------- quota ------
@@ -327,7 +390,9 @@ function snapshot() {
     cfg: publicCfg(),
     oc: state.oc,
     ninfer: {
-      up: state.ninfer.up, slots: state.ninfer.slots, metricsPrefix: state.ninfer.metricsPrefix,
+      up: state.ninfer.up, slots: state.ninfer.slots,
+      metricsPrefix: state.ninfer.metricsPrefix,
+      rateSource: state.ninfer.rateSource,
       pp: state.ninfer.pp, tg: state.ninfer.tg,
       processing: state.ninfer.processing, deferred: state.ninfer.deferred,
       ppSeries: state.ninfer.ppSeries, tgSeries: state.ninfer.tgSeries,
@@ -353,5 +418,5 @@ server.listen(CFG.dashPort, "127.0.0.1", () => {
   console.log(`qwen-parent dashboard  →  http://127.0.0.1:${CFG.dashPort}`);
   console.log(`opencode server        →  ${ocBase}   (TUI: opencode --hostname ${CFG.ocHost} --port ${CFG.ocPort})`);
   console.log(`ninfer telemetry       →  ${nBase}`);
-  console.log(`quota guard            →  ${CFG.zenBudget} ${state.quota.present ? "" : "(absent → panel hidden)"}`);
+  console.log(`quota guard            →  ${CFG.zenBudget}`);
 });

@@ -141,10 +141,15 @@ What you see:
   `▸ FANOUT / ▸ MERGE / ▸ THROTTLED` narration lines highlighted green.
 
 Notes: if `OPENCODE_SERVER_PASSWORD` is set, export it before starting the
-dashboard (it forwards basic auth). If `/metrics` is disabled on ninfer,
-add `--metrics` to its serve flags for the charts; otherwise the panel
-degrades to lane indicators only. All three sources degrade independently —
-the page never goes blank because one is down.
+dashboard (it forwards basic auth). If ninfer runs without `--metrics`, the
+charts automatically fall back to rates derived from `/slots` lane deltas
+(accurate while lanes are processing; add `--metrics` to the ninfer serve
+flags and restart the container for exact server-wide counters — note that
+restart briefly interrupts the local model). Only sessions running through
+the pinned 4096 server appear in the Agents panel — the desktop app's own
+server (random port) is a separate instance and won't show. All three
+sources degrade independently — the page never goes blank because one is
+down.
 
 ## Plugins under the hierarchy
 
