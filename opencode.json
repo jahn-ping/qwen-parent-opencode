@@ -1,0 +1,112 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+
+  "model": "ninfer/qwen3_8_27b_nvfp4",
+  "small_model": "opencode/mimo-v2.6-flash-free",
+
+  "provider": {
+    "ninfer": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "ninfer V100 (local)",
+      "options": {
+        "baseURL": "http://127.0.0.1:8080/v1",
+        "apiKey": "not-needed"
+      },
+      "models": {
+        "qwen3_8_27b_nvfp4": {
+          "name": "Qwen3.8-27B NVFP4 [local parent]",
+          "reasoning": true,
+          "tool_call": true,
+          "limit": { "context": 96000, "output": 32768 }
+        }
+      }
+    },
+
+    "nvidia-nim": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "NVIDIA NIM (free tier)",
+      "options": {
+        "baseURL": "https://integrate.api.nvidia.com/v1",
+        "apiKey": "{env:NVIDIA_API_KEY}",
+        "timeout": 600000,
+        "chunkTimeout": 60000
+      },
+      "models": {
+        "nemotron-3-ultra-550b": {
+          "name": "Nemotron 3 Ultra 550B [NIM]",
+          "reasoning": false,
+          "tool_call": true,
+          "limit": { "context": 131072, "output": 32768 }
+        },
+        "qwen/qwen3-coder-480b-a35b-instruct": {
+          "name": "Qwen3 Coder 480B A35B [NIM]",
+          "reasoning": false,
+          "tool_call": true,
+          "limit": { "context": 262144, "output": 65536 }
+        }
+      }
+    }
+  },
+
+  "agent": {
+    "build": {
+      "mode": "primary",
+      "model": "ninfer/qwen3_8_27b_nvfp4",
+      "permission": { "edit": "allow", "bash": "allow" }
+    },
+
+    "plan": {
+      "mode": "primary",
+      "model": "ninfer/qwen3_8_27b_nvfp4",
+      "permission": { "edit": "deny", "bash": "deny" }
+    },
+
+    "scout-mimo": {
+      "mode": "subagent",
+      "description": "Read-only code scout on FREE MiMo quota (OpenCode Zen). FIRST CHOICE for broad search/read fan-out while the daily budget holds (60 calls/day, stop at 45).",
+      "model": "opencode/mimo-v2.6-flash-free",
+      "prompt": "You are a read-only scout worker. A local Qwen parent makes ALL decisions; you never advise, never edit files, never run commands, never ask questions back.\n\nYour only job: read the code the parent points you at and return a facts-only brief.\n\nOutput format (hard rules):\n- First line: what you were asked + found / no-match.\n- Then bullet facts, MAX 15, each with a file:line reference.\n- Quote at most 3 short code lines per bullet. Never dump whole files.\n- Facts only: no recommendations, no 'you should', no opinions.\n- If the task is too big for 15 bullets, return the 15 most relevant facts and state how much was skipped.",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "todowrite": "deny",
+        "question": "deny"
+      }
+    },
+
+    "scout-nim": {
+      "mode": "subagent",
+      "description": "Read-only code scout on NVIDIA NIM free tier. SECOND choice when MiMo is capped or dead. Runs until NIM throttles (429), then dead for the day.",
+      "model": "nvidia-nim/nemotron-3-ultra-550b",
+      "prompt": "You are a read-only scout worker. A local Qwen parent makes ALL decisions; you never advise, never edit files, never run commands, never ask questions back.\n\nYour only job: read the code the parent points you at and return a facts-only brief.\n\nOutput format (hard rules):\n- First line: what you were asked + found / no-match.\n- Then bullet facts, MAX 15, each with a file:line reference.\n- Quote at most 3 short code lines per bullet. Never dump whole files.\n- Facts only: no recommendations, no 'you should', no opinions.\n- If the task is too big for 15 bullets, return the 15 most relevant facts and state how much was skipped.",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "todowrite": "deny",
+        "question": "deny"
+      }
+    },
+
+    "scout-local": {
+      "mode": "subagent",
+      "description": "Read-only code scout on the LOCAL Qwen (same ninfer server as the parent). LAST resort when both free tiers are capped/throttled. Parent: never run more than ONE scout-local at a time — the server has only 2 slots.",
+      "model": "ninfer/qwen3_8_27b_nvfp4",
+      "prompt": "You are a read-only scout worker. A local Qwen parent makes ALL decisions; you never advise, never edit files, never run commands, never ask questions back.\n\nYour only job: read the code the parent points you at and return a facts-only brief.\n\nOutput format (hard rules):\n- First line: what you were asked + found / no-match.\n- Then bullet facts, MAX 15, each with a file:line reference.\n- Quote at most 3 short code lines per bullet. Never dump whole files.\n- Facts only: no recommendations, no 'you should', no opinions.\n- If the task is too big for 15 bullets, return the 15 most relevant facts and state how much was skipped.",
+      "permission": {
+        "edit": "deny",
+        "bash": "deny",
+        "task": "deny",
+        "webfetch": "deny",
+        "websearch": "deny",
+        "todowrite": "deny",
+        "question": "deny"
+      }
+    }
+  }
+}
