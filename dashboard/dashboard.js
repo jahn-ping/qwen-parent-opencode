@@ -474,7 +474,9 @@ async function ninferPoll() {
     state.ninfer.slotPrev = newPrev;
     if (sawLane) slotRate = { pp: ppAcc / dt, tg: tgAcc / dt };
   } catch {
-    state.ninfer.up = false;
+    // /slots 404s on this fork every second — don't let that mark ninfer
+    // down while the docker-logs feed is provably streaming
+    if (!state.dockerLogs) state.ninfer.up = false;
   }
 
   let metricsRate = null;

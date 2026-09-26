@@ -406,6 +406,10 @@ function pushTicker(t, html, cls, sig) {
   if (tickerLines.length > 250) tickerLines.shift();
 }
 function renderTicker() {
+  if (!tickerLines.length) {
+    $("ticker").innerHTML = `<div class="line" style="color:var(--dim)">idle — events and ▸ narration will appear here as sessions work</div>`;
+    return;
+  }
   $("ticker").innerHTML = tickerLines.slice(-120).map((l) =>
     `<div class="line ${l.cls || ""}"><span class="ts">${ts(l.t)}</span>${l.html}${l.rep > 1 ? ` <span class="src">×${l.rep}</span>` : ""}</div>`).join("");
   const el = $("ticker").parentElement;
