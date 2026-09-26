@@ -409,7 +409,10 @@ async function ninferPoll() {
     if (state.ninfer.ppSeries.length > MAX_SAMPLES) state.ninfer.ppSeries.shift();
     if (state.ninfer.tgSeries.length > MAX_SAMPLES) state.ninfer.tgSeries.shift();
   }
-  state.ninfer.rateSource = metricsRate ? "metrics" : (slotRate ? "slots" : null);
+  // docker-logs parsing (5s cadence) sticks — the 1s poller must not clobber it
+  if (metricsRate) state.ninfer.rateSource = "metrics";
+  else if (slotRate) state.ninfer.rateSource = "slots";
+  else if (state.ninfer.rateSource !== "docker-logs") state.ninfer.rateSource = null;
 
   // engine-log: busy/queue transitions + a coalesced timing line while active
   const busy = state.ninfer.processing, queue = state.ninfer.deferred;
