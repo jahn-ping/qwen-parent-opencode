@@ -56,9 +56,12 @@ const state = {
     counters: null,     // last /metrics counters {prompt, predicted, t}
     slotPrev: {},       // per-lane last sample {task, prompt, decoded}
     lastT: 0,
+    busyPrev: null, queuePrev: null,
   },
   quota: { present: false, raw: null, kv: null, ts: 0 },
   events: [], // ring buffer of forwarded opencode events {t, kind, summary, text}
+  englog: [], // engine-log lines {t, line, cls} — real docker logs + synthetic telemetry
+  dockerLogs: false,
 };
 
 const clients = new Set(); // browser SSE connections
@@ -68,6 +71,56 @@ function broadcast(obj) {
   for (const res of clients) {
     try { res.write(line); } catch { /* dropped client, reaped on close */ }
   }
+}
+
+// ------------------------------------------------------------- engine log ----
+
+// Two feeds merged into one scrolling panel, llama-server flavored:
+//  1. real `docker logs -f` from the ninfer container (when docker is reachable)
+//  2. synthetic print_timing-style lines derived from telemetry deltas, so the
+//     panel stays alive even without docker access or /metrics
+function engLog(line, cls) {
+  const rec = { t: Date.now(), line: String(line).slice(0, 300), cls: cls || "" };
+  state.englog.push(rec);
+  if (state.englog.length > 300) state.englog.shift();
+  broadcast({ type: "eng", line: rec });
+}
+
+function classifyDockerLine(l) {
+  if (/\sW\s|warning/i.test(l)) return "warn";
+  if (/\sE\s|error/i.test(l)) return "err";
+  if (/tokens per second|print_timing|per token/i.test(l)) return "timing";
+  return "";
+}
+
+function startDockerLogs() {
+  if (process.env.NINFER_LOGS === "off") return;
+  const { spawn, execFile } = require("node:child_process");
+  const pick = (name) => {
+    if (!name) return;
+    const child = spawn("docker", ["logs", "-f", "--tail", "60", name], { stdio: ["ignore", "pipe", "ignore"] });
+    let buf = "";
+    child.stdout.on("data", (d) => {
+      buf += d;
+      let i;
+      while ((i = buf.indexOf("\n")) >= 0) {
+        const l = buf.slice(0, i).trim();
+        buf = buf.slice(i + 1);
+        if (l) engLog(l, classifyDockerLine(l));
+      }
+    });
+    child.on("error", () => { /* no docker / no perms — synthetic feed carries on */ });
+    child.on("close", () => { state.dockerLogs = false; });
+    state.dockerLogs = true;
+    engLog(`attached: docker logs -f ${name}`, "ok");
+  };
+  const forced = process.env.NINFER_CONTAINER;
+  if (forced) return pick(forced);
+  execFile("docker", ["ps", "--format", "{{.Names}}"], { timeout: 5000 }, (err, stdout) => {
+    if (err) return;
+    const hit = String(stdout).split("\n").find((n) => /ninfer/i.test(n));
+    if (hit) pick(hit.trim());
+  });
 }
 
 async function jfetch(url, opts = {}, timeoutMs = 5000) {
@@ -230,13 +283,13 @@ async function ocPoll() {
     const tails = {};
     await Promise.all(active.map(async (s) => {
       try {
-        const msgs = await jfetch(`${ocBase}/session/${s.id}/message?limit=3`, { headers: ocHeaders });
+        const msgs = await jfetch(`${ocBase}/session/${s.id}/message?limit=6`, { headers: ocHeaders });
         const tail = tailFromMessages(msgs || []);
         if (tail) tails[s.id] = {
           ...tail,
           agent: s.agent || null,
           status: (state.oc.statuses[s.id]) || null,
-          text: String(tail.text).slice(-400),
+          text: String(tail.text).slice(-1600),
         };
       } catch { /* session gone mid-poll */ }
     }));
@@ -279,6 +332,10 @@ async function ninferPoll() {
       const nPrompt = s.n_prompt_tokens_processed || 0;
       const nDec = (s.next_token && s.next_token[0] && s.next_token[0].n_decoded) || 0;
       const prev = prevMap[s.id];
+      if (s.is_processing && prev && prev.task !== s.id_task && s.id_task != null && s.id_task !== -1)
+        engLog(`slot launch_slot_: lane ${s.id} | task ${s.id_task} | processing task`, "ok");
+      if (prev && prev.task != null && prev.task !== -1 && prev.task !== s.id_task)
+        engLog(`slot print_timing: lane ${s.id} | task ${prev.task} | pp ≈${prev.prompt} tok · tg ≈${prev.decoded} tok`, "timing");
       if (s.is_processing && prev && prev.task === s.id_task && dt > 0.2) {
         ppAcc += Math.max(0, nPrompt - prev.prompt);
         tgAcc += Math.max(0, nDec - prev.decoded);
@@ -330,6 +387,17 @@ async function ninferPoll() {
     if (state.ninfer.tgSeries.length > MAX_SAMPLES) state.ninfer.tgSeries.shift();
   }
   state.ninfer.rateSource = metricsRate ? "metrics" : (slotRate ? "slots" : null);
+
+  // engine-log: busy/queue transitions + a coalesced timing line while active
+  const busy = state.ninfer.processing, queue = state.ninfer.deferred;
+  if (busy != null && busy !== state.ninfer.busyPrev)
+    engLog(`srv  slots: busy ${busy}/2${queue ? ` · queue ${queue}` : ""}`, "ok");
+  if (queue != null && queue !== state.ninfer.queuePrev && queue > 0)
+    engLog(`srv  queue: ${queue} request(s) deferred — all lanes busy`, "warn");
+  state.ninfer.busyPrev = busy;
+  state.ninfer.queuePrev = queue;
+  if (rate && dt > 0.2 && (rate.pp > 1 || rate.tg > 1))
+    engLog(`slot print_timing: pp ${Math.round(rate.pp * dt)} tok @ ${rate.pp.toFixed(1)} t/s | tg ${Math.round(rate.tg * dt)} tok @ ${rate.tg.toFixed(1)} t/s`, "timing");
 }
 
 // ------------------------------------------------------------- quota ------
@@ -399,6 +467,8 @@ function snapshot() {
     },
     quota: state.quota,
     events: state.events.slice(-200),
+    englog: state.englog.slice(-200),
+    dockerLogs: state.dockerLogs,
   };
 }
 
@@ -413,6 +483,7 @@ ocPoll();
 ninferPoll();
 pollQuota();
 setInterval(pollQuota, 30000);
+startDockerLogs();
 
 server.listen(CFG.dashPort, "127.0.0.1", () => {
   console.log(`qwen-parent dashboard  →  http://127.0.0.1:${CFG.dashPort}`);

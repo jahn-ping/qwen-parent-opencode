@@ -46,7 +46,7 @@
   .chip.error { color: var(--red); border-color: var(--red); }
   .model { color: var(--purple); font-family: var(--mono); font-size: 11px; }
   .tail { margin-top: 5px; font-family: var(--mono); font-size: 11.5px; color: var(--dim);
-          white-space: pre-wrap; word-break: break-word; max-height: 6.2em; overflow: hidden;
+          white-space: pre-wrap; word-break: break-word; max-height: 9em; overflow-y: auto;
           border-left: 2px solid var(--edge); padding-left: 7px; }
   .tail.thinking { border-left-color: var(--purple); color: #a78bfa; }
   .tail.tool     { border-left-color: var(--blue); }
@@ -77,8 +77,10 @@
   .bar.warn .fill { background: linear-gradient(90deg, #9e6a03, #d29922); }
   .bar.dead .fill { background: linear-gradient(90deg, #b62324, #f85149); }
   .bar .stop { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--red); }
-  /* ticker */
-  #tickerwrap { height: 205px; flex: none; margin: 0 10px 10px; }
+  /* ticker + engine log share the bottom row */
+  #bottomrow { display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
+               margin: 0 10px 10px; height: 220px; flex: none; }
+  #bottomrow .panel { height: 100%; min-height: 0; }
   #ticker { font-family: var(--mono); font-size: 11.5px; }
   #ticker .line { padding: 1px 0; color: var(--dim); white-space: nowrap; overflow: hidden;
                   text-overflow: ellipsis; }
@@ -86,6 +88,14 @@
   #ticker .line.narr { color: var(--green); font-weight: 600; }
   #ticker .line.msg  { color: var(--fg); }
   #ticker .line .kind { color: var(--blue); }
+  #englog { font-family: var(--mono); font-size: 11.5px; }
+  #englog .eline { padding: 1px 0; color: var(--dim); white-space: nowrap; overflow: hidden;
+                   text-overflow: ellipsis; }
+  #englog .eline .ts { color: #484f58; margin-right: 6px; }
+  #englog .eline.warn { color: var(--yellow); }
+  #englog .eline.err { color: var(--red); }
+  #englog .eline.timing { color: var(--green); }
+  #englog .eline.ok { color: var(--blue); }
   footer { padding: 4px 14px; color: var(--dim); font-size: 11px; font-family: var(--mono);
            border-top: 1px solid var(--edge); background: var(--panel); }
   ::-webkit-scrollbar { width: 9px; height: 9px; }
@@ -140,9 +150,15 @@
   </div>
 </main>
 
-<div class="panel" id="tickerwrap">
-  <h2>Flow — events &amp; ▸ narration</h2>
-  <div class="panelbody" id="ticker"></div>
+<div id="bottomrow">
+  <div class="panel">
+    <h2>Flow — events &amp; ▸ narration</h2>
+    <div class="panelbody" id="ticker"></div>
+  </div>
+  <div class="panel">
+    <h2 id="engtitle">Engine — ninfer</h2>
+    <div class="panelbody" id="englog"></div>
+  </div>
 </div>
 
 <footer id="foot">connecting…</footer>
@@ -197,15 +213,27 @@ function agentCard(sess, tail, isChild) {
 function renderAgents(snap) {
   const tree = snap.oc.tree || [];
   const tails = snap.oc.tails || {};
-  if (!tree.length) { $("agents").textContent = snap.oc.up
+  const el = $("agents");
+  if (!tree.length) { el.textContent = snap.oc.up
     ? "no sessions yet — start one in the TUI" : "opencode server down"; return; }
-  $("agents").innerHTML = tree.map((s) =>
+  const html = tree.map((s) =>
     `<div class="sess">
       <div class="row"><span class="name">${esc(s.title)}</span>
       <span class="src">${ago(s.updated)}</span></div>
       ${agentCard(s, tails[s.id], false)}
       ${(s.children || []).map((c) => agentCard(c, tails[c.id], true)).join("")}
     </div>`).join("");
+  // preserve scroll positions across the 1 Hz re-render (panel + each tail box)
+  const bodyScroll = el.scrollTop;
+  const tailScrolls = [...el.querySelectorAll(".tail")].map((t) => t.scrollTop);
+  if (el.dataset.sig !== html) {
+    el.innerHTML = html;
+    el.dataset.sig = html;
+    el.scrollTop = bodyScroll;
+    [...el.querySelectorAll(".tail")].forEach((t, i) => {
+      if (tailScrolls[i] != null) t.scrollTop = tailScrolls[i];
+    });
+  }
 }
 
 // ---------------------------------------------------------------- charts --
@@ -317,6 +345,21 @@ function renderTicker() {
   el.scrollTop = el.scrollHeight;
 }
 
+// ------------------------------------------------------------ engine log --
+
+const engLines = [];
+function pushEng(rec) {
+  engLines.push(rec);
+  if (engLines.length > 250) engLines.shift();
+}
+function renderEng() {
+  const el = $("englog");
+  const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
+  el.innerHTML = engLines.slice(-120).map((l) =>
+    `<div class="eline ${l.cls || ""}"><span class="ts">${ts(l.t)}</span>${esc(l.line)}</div>`).join("");
+  if (stick) el.scrollTop = el.scrollHeight;
+}
+
 // --------------------------------------------------------------- wiring --
 
 function applySnapshot(snap) {
@@ -326,9 +369,12 @@ function applySnapshot(snap) {
   renderAgents(snap);
   renderCharts(snap);
   renderQuota(snap);
+  $("engtitle").textContent = snap.dockerLogs
+    ? "Engine — ninfer (docker logs)" : "Engine — ninfer (telemetry)";
   $("foot").textContent =
     `opencode ${snap.oc.up ? "up" : "down"} · ninfer ${snap.ninfer.up ? "up" : "down"}` +
-    ` · quota ${snap.quota.present ? "up" : "absent"} · updated ${ts(snap.t)}`;
+    ` · quota ${snap.quota.present ? "up" : "absent"}` +
+    ` · engine ${snap.dockerLogs ? "docker" : "synthetic"} · updated ${ts(snap.t)}`;
 }
 
 const NARR = /[▸▲]|\[QUOTA\]|FANOUT|MERGE|THROTTLED/;
@@ -355,13 +401,18 @@ function connect() {
     if (msg.type === "hello") { CFG = msg.cfg; $("oc-note").textContent = ""; }
     else if (msg.type === "snapshot") {
       applySnapshot(msg.data);
-      // backfill the ticker once so a fresh page isn't empty
+      // backfill the ticker + engine log once so a fresh page isn't empty
       if (!tickerLines.length && msg.data.events) {
         for (const e of msg.data.events.slice(-60)) onOcEvent(e);
         renderTicker();
       }
+      if (!engLines.length && msg.data.englog) {
+        for (const e of msg.data.englog.slice(-60)) pushEng(e);
+        renderEng();
+      }
     }
     else if (msg.type === "oc-event") { onOcEvent(msg.ev); renderTicker(); }
+    else if (msg.type === "eng") { pushEng(msg.line); renderEng(); }
   };
   es.onerror = () => { $("foot").textContent = "reconnecting…"; };
 }
