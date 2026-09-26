@@ -115,7 +115,14 @@ function discoverServers() {
     for (const [portStr, info] of found) {
       const port = parseInt(portStr, 10);
       if (state.servers.has(port)) {
-        Object.assign(state.servers.get(port), { name: info.name, pid: info.pid });
+        const srv = state.servers.get(port);
+        Object.assign(srv, { name: info.name, pid: info.pid });
+        if (!srv.pass && info.pid) {
+          // server was seen before without a password — retry (e.g. it got
+          // restarted with an env-visible password since the last scan)
+          const pass = readEnvironPassword(info.pid);
+          if (pass) { srv.pass = pass; engLog(`password found for :${port} — next probe goes live`, "ok"); }
+        }
         continue;
       }
       const pass = info.pid ? readEnvironPassword(info.pid) : null;

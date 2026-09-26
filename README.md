@@ -142,6 +142,14 @@ Rows are resizable (drag panel edges / column divider). All sources degrade
 independently. Set `DASH_HOST=0.0.0.0` to expose it on the LAN (default is
 loopback-only; use the tunnel for remote viewing).
 
+Coverage note: session **titles, tokens and tree** come from OpenCode's
+shared storage, so every harness instance's sessions appear — desktop app
+included. **Live event streaming and thinking tails** need the server's
+password, which the dashboard reads from each server process's environment
+(TUI/headless launches expose it; the desktop app keeps its private, so its
+sessions show in the tree but don't live-stream — start any TUI or headless
+session and those stream fully).
+
 Notes: if `OPENCODE_SERVER_PASSWORD` is set, export it before starting the
 dashboard (it forwards basic auth). If ninfer runs without `--metrics`, the
 charts automatically fall back to rates derived from `/slots` lane deltas
