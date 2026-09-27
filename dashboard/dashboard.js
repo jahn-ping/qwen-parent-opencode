@@ -254,16 +254,23 @@ function tailFromMessages(msgs) {
       if (p.type === "reasoning" && p.text) return { label: "thinking", text: p.text };
       if (p.type === "text" && p.text) return { label: "text", text: p.text };
       if (p.type === "tool" && p.tool) {
-        // tool state is an object ({status, input, output…}) in current
-        // opencode — render something human, never "[object Object]"
+        // describe WHAT the tool is doing, not a wall of output
         let text = "";
         const st = p.state;
-        if (typeof st === "string") text = st;
+        const inp = (st && typeof st === "object" && st.input && typeof st.input === "object")
+          ? st.input : null;
+        if (inp && typeof inp.command === "string") text = `bash ▸ ${inp.command}`;
+        else if (inp && (inp.filePath || inp.path))
+          text = `${p.tool} ▸ ${inp.filePath || inp.path}${inp.limit ? ` (limit ${inp.limit})` : ""}`;
+        else if (inp) {
+          const s = JSON.stringify(inp);
+          text = `${p.tool} ▸ ${s.length > 200 ? s.slice(0, 200) + "…" : s}`;
+        } else if (typeof st === "string") text = st;
         else if (st && typeof st === "object") {
-          text = typeof st.output === "string" && st.output ? st.output
-            : st.input ? JSON.stringify(st.input) : JSON.stringify(st);
+          text = typeof st.output === "string" && st.output
+            ? String(st.output).slice(-300) : JSON.stringify(st);
         }
-        return { label: `tool:${p.tool}`, text: text || "" };
+        return { label: `tool:${p.tool}`, text: text.slice(0, 400) };
       }
     }
   }
@@ -344,11 +351,11 @@ async function ocPoll() {
         `http://127.0.0.1:${s._srv}/session/${s.id}/message?limit=6`,
         headersFor(srv || { pass: null }));
       const tail = tailFromMessages(msgs || []);
-      if (tail) tails[s.id] = {
-        ...tail, agent: s.agent || s._srv,
-        status: statuses[`${s._srv}:${s.id}`] || null,
-        text: String(tail.text).slice(-1600),
-      };
+        if (tail) tails[s.id] = {
+          ...tail, agent: s.agent || s._srv,
+          status: statuses[`${s._srv}:${s.id}`] || null,
+          text: String(tail.text).slice(-900),
+        };
     } catch { /* gone mid-poll */ }
   }));
   state.oc.tails = tails;

@@ -66,9 +66,14 @@
   .model { color: var(--purple); font-family: var(--mono); font-size: 11px; }
   .toks { color: var(--dim); font-family: var(--mono); font-size: 10.5px; }
   .toks b { color: var(--fg); font-weight: 600; }
-  .tail { margin-top: 5px; font-family: var(--mono); font-size: 11.5px; color: var(--dim);
-          white-space: pre-wrap; word-break: break-word; max-height: 9em; overflow-y: auto;
+  .nowline { margin-top: 4px; font-family: var(--mono); font-size: 12px; color: var(--fg); }
+  .nowline .verb { color: var(--green); font-weight: 600; }
+  .tail { margin-top: 4px; font-family: var(--mono); font-size: 11px; color: var(--dim);
+          display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
+          overflow: hidden; word-break: break-word; cursor: pointer;
           border-left: 2px solid var(--edge); padding-left: 7px; }
+  .tail:hover { background: rgba(255,255,255,0.03); }
+  .tail.open { display: block; -webkit-line-clamp: unset; }
   .tail.thinking { border-left-color: var(--purple); color: #a78bfa; }
   .tail.tool     { border-left-color: var(--blue); }
   .child { margin-left: 16px; }
@@ -268,6 +273,14 @@ function agentCard(sess, tail, isChild, multi) {
   const tailCls = t.label === "thinking" ? "thinking" : (t.label || "").startsWith("tool") ? "tool" : "";
   const tk = sess.tokens;
   const tokStr = tk ? `<span class="toks">tok <b>${fmtK(tk.input)}</b>in · <b>${fmtK(tk.output)}</b>out · <b>${fmtK(tk.reasoning)}</b>think</span>` : "";
+  // "now" line — what this agent is doing at a glance
+  const lbl = t.label || "";
+  const verb = lbl === "thinking" ? "💭 thinking"
+    : lbl.startsWith("tool:") ? `⚙ ${esc(lbl.slice(5))}`
+    : lbl === "text" ? "✍ composing" : "";
+  const nowBody = t.text ? String(t.text).split("\n").filter(Boolean).slice(-1)[0] : "";
+  const nowLine = verb
+    ? `<div class="nowline"><span class="verb">${verb}</span>${nowBody ? " — " + esc(nowBody.slice(0, 90)) : ""}</div>` : "";
   return `<div class="agent${isChild ? " child" : ""}">
     <div class="row">
       <span class="aname">${esc(agent)}</span>
@@ -276,7 +289,8 @@ function agentCard(sess, tail, isChild, multi) {
       <span class="src">${ago(sess.updated)}</span>
     </div>
     <div class="row">${tokStr}${multi ? `<span class="meta">:${sess.srv}</span>` : ""}</div>
-    ${tailText ? `<div class="tail ${tailCls}">${tailText}</div>` : ""}
+    ${nowLine}
+    ${tailText ? `<div class="tail ${tailCls}" title="click to expand">${tailText}</div>` : ""}
   </div>`;
 }
 
@@ -326,9 +340,9 @@ function renderAgents(snap) {
 // tab clicks (delegated — survives the 1 Hz re-render)
 $("agents").addEventListener("click", (e) => {
   const tab = e.target.closest(".stab");
-  if (!tab) return;
-  selectedKey = tab.dataset.k;
-  if (window.lastSnap) renderAgents(window.lastSnap);
+  if (tab) { selectedKey = tab.dataset.k; if (window.lastSnap) renderAgents(window.lastSnap); return; }
+  const tl = e.target.closest(".tail");
+  if (tl) tl.classList.toggle("open");
 });
 
 // ---------------------------------------------------------------- charts --
