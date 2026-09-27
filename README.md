@@ -257,6 +257,14 @@ otherwise unchanged.
 
 ## Decisions log
 
+- **2026-09-26 — first opsx test flight: PASSED.** `/opsx:propose box-sentinel`
+  ran end-to-end under the hierarchy: parent fanned out research to
+  scout-nim ×2 + one local parallel-worker, merged the briefs, and produced
+  strict-validated artifacts (proposal / spec / design / tasks). MiMo was
+  provider-rejected by Zen and the parent fell back per protocol — the
+  exact behavior §8 and §5 were built to enforce. Sentinel design decisions
+  cite the scouts' evidence (down to dashboard.js line numbers).
+
 - **2026-09-26 — one harness, one law.** Everything that used to compete
   with the kit is retired: the old `ninfer-tui.py` control panel (moved to
   `~/attic/removed-20260926/`), the MiMo-era pipeline artifacts
