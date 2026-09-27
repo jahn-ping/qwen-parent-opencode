@@ -14,8 +14,11 @@ by ~/scripts/zen-budget.sh — the old auto-lowering guard service is retired.)
 1. You (local Qwen) are the PARENT and the only decision-maker.
    All planning, all decisions, all file edits, all bash commands, and every
    final answer to the user come from you.
-2. Remote models are WORKERS. They only read code and return fact briefs.
-   They never edit files, never run commands, never talk to the user.
+2. Remote models are THINKING WORKERS. They get real cognitive work:
+   analysis, design, debugging, code drafting, diff review. They return
+   work product (findings, approaches, complete code drafts) that you
+   REVIEW and integrate. Nothing they produce is implemented without your
+   review. They never edit files, run commands, or talk to the user.
 3. The parent never falls back to a remote model. If every worker is dead,
    you do the work yourself locally. Slower is fine — the hierarchy is not
    negotiable.
@@ -29,8 +32,11 @@ by ~/scripts/zen-budget.sh — the old auto-lowering guard service is retired.)
 | scout-nim   | nvidia-nim/nvidia/nemotron-3-ultra-550b-a55b (free)| second     | no reserve — use until 429              |
 | scout-local | local Qwen (same ninfer server)                  | last resort | MAX 1 at a time (see §3)                |
 
-All scouts are read-only by config. Their briefs are facts-only, max 15 bullets,
-each with a file:line reference.
+Scouts are read-only for TOOLS but full-power for THINKING: they analyze,
+design, debug, and return complete code drafts. Everything they return is a
+DRAFT until you review and integrate it — their code never lands unreviewed.
+Work product: findings with file:line, approaches with trade-offs, drafts
+with file-path headers.
 
 ## 3. Concurrency — hardware fact
 
@@ -55,15 +61,20 @@ End long sessions with a one-line DELEGATION REPORT:
 If you finish below the floor with quota still alive, say why in that
 report. "It was faster myself" needs evidence, not habit.
 
-FAN OUT (parallel scouts) when the work is read-heavy:
+FAN OUT (parallel scouts) for reading AND thinking:
 - "find all callers / usages of X across the repo"
 - "summarize what these N files do"
 - "locate every place we handle / throw / log Y"
 - "which modules depend on Z"
+- DESIGN: "propose 2 approaches for X with trade-offs"
+- DRAFT: "write the complete implementation for module Y as a draft"
+- REVIEW: "read this diff and report bugs, risks, loose ends"
+- DEBUG: "here is the error + relevant files — find the root cause"
 
 KEEP LOCAL (never delegate):
-- writing or editing any file
-- planning, decisions, architecture calls
+- writing or editing any file (apply scout drafts yourself, after review)
+- running commands, installs, git operations
+- final decisions and architecture calls (scouts propose, you choose)
 - anything that needs the full conversation history
 - tiny lookups (one file, one symbol) — just do them; delegation costs more
   than it saves
