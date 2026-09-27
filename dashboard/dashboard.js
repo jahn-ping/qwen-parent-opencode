@@ -412,7 +412,9 @@ function classifyDockerLine(l) {
 }
 
 function engLog(line, cls) {
-  const rec = { t: Date.now(), line: String(line).slice(0, 300), cls: cls || "" };
+  // ninfer lines carry their own timestamp — strip it, the panel overlays ours
+  const clean = String(line).replace(/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}:\d{2}\.\d{3}\s+/, "");
+  const rec = { t: Date.now(), line: clean.slice(0, 300), cls: cls || "" };
   state.englog.push(rec);
   if (state.englog.length > 300) state.englog.shift();
   broadcast({ type: "eng", line: rec });

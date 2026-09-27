@@ -107,6 +107,8 @@
   .bar.warn .fill { background: linear-gradient(90deg, #9e6a03, #d29922); }
   .bar.dead .fill { background: linear-gradient(90deg, #b62324, #f85149); }
   .bar .stop { position: absolute; top: -2px; bottom: -2px; width: 2px; background: var(--red); }
+  .bar .reserve { position: absolute; top: 0; bottom: 0; right: 0;
+    background: repeating-linear-gradient(135deg, rgba(248,81,73,0.16) 0 4px, transparent 4px 9px); }
   .panel.alert { border-color: var(--red); animation: alertpulse 1.2s ease-in-out infinite; }
   .panel.warnstate { border-color: var(--yellow); }
   @keyframes alertpulse {
@@ -212,9 +214,10 @@
   <div class="panel" id="panel-eng">
     <h2 id="engtitle">Engine — ninfer
       <span style="margin-left:auto;display:flex;gap:6px;align-items:center">
-        <button class="rng on" data-eng="all">all</button>
-        <button class="rng" data-eng="perf">perf</button>
-        <button class="rng" data-eng="warn">warn</button>
+        <button class="rng on" data-eng="all" id="eng-all">all</button>
+        <button class="rng" data-eng="perf" id="eng-perf">perf</button>
+        <button class="rng" data-eng="warn" id="eng-warn">warn</button>
+        <button class="rng" id="eng-pause" title="pause auto-scroll">⏸</button>
         <button class="zbtn" title="expand">⤢</button>
       </span>
     </h2>
@@ -253,8 +256,9 @@ function renderServers(snap) {
   const el = $("srv-chips");
   const list = snap.servers || [];
   if (!list.length) { el.textContent = "no opencode servers found yet — start any session"; return; }
-  el.innerHTML = list.map((s) =>
-    `<span class="chip-srv ${s.up ? "up" : ""}">:${s.port} · ${s.sessions} sess</span>`).join("");
+  const seen = new Set();
+  el.innerHTML = list.filter((s) => s.port && !seen.has(s.port) && seen.add(s.port)).map((s) =>
+    `<span class="chip-srv ${s.up ? "up" : ""}"><span class="dot ${s.up ? "up" : ""}" style="margin-right:5px"></span>:${s.port} · ${s.sessions} sess</span>`).join("");
 }
 
 // ---------------------------------------------------------------- agents --
@@ -272,7 +276,7 @@ function agentCard(sess, tail, isChild, multi) {
   const tailText = t.text ? esc(t.text) : "";
   const tailCls = t.label === "thinking" ? "thinking" : (t.label || "").startsWith("tool") ? "tool" : "";
   const tk = sess.tokens;
-  const tokStr = tk ? `<span class="toks">tok <b>${fmtK(tk.input)}</b>in · <b>${fmtK(tk.output)}</b>out · <b>${fmtK(tk.reasoning)}</b>think</span>` : "";
+  const tokStr = tk ? `<span class="toks">↑<b>${fmtK(tk.input)}</b> ↓<b>${fmtK(tk.output)}</b> 🧠<b>${fmtK(tk.reasoning)}</b></span>` : "";
   // "now" line — what this agent is doing at a glance
   const lbl = t.label || "";
   const verb = lbl === "thinking" ? "💭 thinking"
@@ -371,6 +375,14 @@ function drawChart(canvas, series, band, color) {
     ctx.setLineDash([]);
   }
   const vis = series.filter((p) => p.t > now - span);
+  ctx.fillStyle = "#484f58"; ctx.font = "10px ui-monospace, monospace"; ctx.textAlign = "right";
+  ctx.fillText(String(Math.round(maxV)), 26, 10);
+  ctx.fillText(String(Math.round(maxV / 2)), 26, h / 2 + 3);
+  if (!vis.length) {
+    ctx.textAlign = "center";
+    ctx.fillText("no requests in this window", w / 2, h / 2 - 6);
+    return;
+  }
   if (vis.length > 1) {
     ctx.strokeStyle = color; ctx.lineWidth = 1.6; ctx.beginPath();
     let started = false;
@@ -420,7 +432,7 @@ function renderCharts(snap) {
   $("queue").textContent = (nf.deferred != null ? nf.deferred : "–") + " / " +
                            (nf.processing != null ? nf.processing : "–");
   const tk = (snap.oc || {}).tokens;
-  $("tokv").innerHTML = tk ? `<b>${fmtK(tk.input)}</b>in <b>${fmtK(tk.output)}</b>out` : "–";
+  $("tokv").innerHTML = tk ? `↑<b>${fmtK(tk.input)}</b> ↓<b>${fmtK(tk.output)}</b>` : "–";
 
   $("nf-note").textContent = nf.up
     ? (nf.rateSource === "docker-logs"
@@ -440,11 +452,16 @@ function quotaRow(name, used, budget, trips, stopLine, ceil) {
   const total = ceil || (stopLine ? Math.round(stopLine / 0.75) : budget);
   const width = total ? Math.min(100, (used / total) * 100) : 0;
   const stopPct = total ? (stopLine / total) * 100 : 75;
+  const stChip = dead ? `<span class="chip error">THROTTLED</span>`
+    : used >= total ? `<span class="chip error">EXHAUSTED</span>`
+    : warn ? `<span class="chip waiting">NEAR STOP</span>`
+    : `<span class="chip" style="color:var(--green);border-color:#1d4423">OK</span>`;
   return `<div class="qrow">
-    <div class="top"><span>${name}${dead ? " · DEAD (429)" : ""}</span>
+    <div class="top"><span>${name} ${stChip}</span>
     <span>${used}/${total}${stopLine ? ` · stop ${stopLine}` : ""}${trips ? ` · trips ${trips}` : ""}</span></div>
     <div class="bar ${dead ? "dead" : warn ? "warn" : ""}">
       <div class="fill" style="width:${width}%"></div>
+      ${stopLine ? `<div class="reserve" style="left:${stopPct}%"></div>` : ""}
       ${stopLine ? `<div class="stop" style="left:${stopPct}%"></div>` : ""}
     </div></div>`;
 }
@@ -504,7 +521,17 @@ function pushEng(rec) {
   engLines.push(rec);
   if (engLines.length > 250) engLines.shift();
 }
+let engPaused = false;
+function updateEngCounts() {
+  const n = (c) => engLines.filter(c).length;
+  const set = (id, txt) => { const e = $(id); if (e) e.textContent = txt; };
+  set("eng-all", `all ${engLines.length}`);
+  set("eng-perf", `perf ${n((l) => l.cls === "timing" || l.cls === "ok")}`);
+  set("eng-warn", `warn ${n((l) => l.cls === "warn" || l.cls === "err")}`);
+}
 function renderEng() {
+  updateEngCounts();
+  if (engPaused) return;
   const el = $("englog");
   const stick = el.scrollHeight - el.scrollTop - el.clientHeight < 40;
   const keep = {
@@ -524,6 +551,12 @@ document.querySelectorAll("[data-eng]").forEach((b) => b.addEventListener("click
   document.querySelectorAll("[data-eng]").forEach((x) => x.classList.toggle("on", x === b));
   renderEng();
 }));
+$("eng-pause").addEventListener("click", () => {
+  engPaused = !engPaused;
+  $("eng-pause").textContent = engPaused ? "▶" : "⏸";
+  $("eng-pause").classList.toggle("on", engPaused);
+  if (!engPaused) renderEng();
+});
 
 const NARR = /[▸▲]|\[QUOTA\]|FANOUT|MERGE|THROTTLED/;
 function onOcEvent(ev) {
