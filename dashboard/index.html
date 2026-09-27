@@ -43,6 +43,16 @@
   .panel.zoomed > .zbtn::after { content: " (esc)"; }
   .panelbody { padding: 10px 12px; overflow-y: auto; flex: 1; }
   /* agents */
+  .projbar { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 7px; }
+  .pchip { font-family: var(--mono); font-size: 11px; color: var(--dim);
+           background: #0d1117; border: 1px solid var(--edge); border-radius: 12px;
+           padding: 2px 10px; cursor: pointer; }
+  .pchip:hover { color: var(--fg); }
+  .pchip.on { color: var(--purple); border-color: var(--purple); background: rgba(188,140,255,0.08); }
+  .adot { width: 7px; height: 7px; border-radius: 50%; background: var(--green);
+          display: inline-block; margin-right: 5px; vertical-align: 0;
+          box-shadow: 0 0 6px rgba(63,185,80,0.9); animation: beepulse 1.6s ease-in-out infinite; }
+  @keyframes beepulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
   .tabbar { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 7px; margin-bottom: 8px;
             border-bottom: 1px solid var(--edge); flex: none; }
   .stab { flex: none; font-family: var(--mono); font-size: 11px; color: var(--dim);
@@ -300,10 +310,19 @@ function agentCard(sess, tail, isChild, multi) {
 }
 
 let selectedKey = null; // "srv:id" of the tabbed session
+let projFilter = localStorage.getItem("dash-proj") || "all";
+const isBusy = (st) => !!st && /busy|running|pending|processing|generating/i.test(
+  typeof st === "string" ? st : JSON.stringify(st));
+const shortDir = (d) => {
+  if (!d) return "?";
+  const s = d.replace(/^~\/?/, "");
+  return s ? s.split("/").pop() : "home";
+};
 
 function sessionHtml(s, tails, multi) {
   return `<div class="sess">
     <div class="row"><span class="name">${esc(s.title)}</span>
+    ${isBusy(s.status) ? `<span class="chip busy">ACTIVE</span>` : ""}
     ${s.dir ? `<span class="meta" title="${esc(s.dir)}">${esc(s.dir)}</span>` : ""}
     <span class="src">${ago(s.updated)}</span></div>
     ${agentCard(s, tails[s.id], false, multi)}
@@ -316,14 +335,24 @@ function renderAgents(snap) {
   const tails = snap.oc.tails || {};
   const el = $("agents");
   const multi = (snap.servers || []).filter((s) => s.up).length > 1;
-  $("sess-count").textContent = tree.length ? `· ${tree.length} session${tree.length > 1 ? "s" : ""}` : "";
-  if (!tree.length) { el.textContent = snap.oc.up
-    ? "no sessions yet — start one anywhere in the harness" : "no opencode servers reachable"; return; }
+  if (!tree.length) {
+    $("sess-count").textContent = "";
+    el.textContent = snap.oc.up
+      ? "no sessions yet — start one anywhere in the harness" : "no opencode servers reachable";
+    return;
+  }
+
+  // group by project folder
+  const dirOf = (s) => s.dir || "~";
+  const dirs = [...new Set(tree.map(dirOf))];
+  if (projFilter !== "all" && !dirs.includes(projFilter)) projFilter = "all";
+  const filtered = projFilter === "all" ? tree : tree.filter((s) => dirOf(s) === projFilter);
+  $("sess-count").textContent = `· ${filtered.length}/${tree.length} session${tree.length > 1 ? "s" : ""}`;
 
   const keyOf = (s) => `${s.srv}:${s.id}`;
-  if (!selectedKey || !tree.some((s) => keyOf(s) === selectedKey))
-    selectedKey = keyOf(tree[0]); // default: most recently active
-  const sel = tree.find((s) => keyOf(s) === selectedKey) || tree[0];
+  if (!selectedKey || !filtered.some((s) => keyOf(s) === selectedKey))
+    selectedKey = keyOf(filtered[0]); // default: most recently active
+  const sel = filtered.find((s) => keyOf(s) === selectedKey) || filtered[0];
   // session-scoped tokens: the selected session plus every subagent it spawned
   const sumT = (a, b) => ({ input: (a.input || 0) + (b.input || 0),
     output: (a.output || 0) + (b.output || 0),
@@ -332,10 +361,20 @@ function renderAgents(snap) {
   window.selTokens = (sel.children || []).reduce(
     (acc, c) => sumT(acc, c.tokens || zero), sumT(zero, sel.tokens || zero));
 
-  const tabs = tree.map((s) =>
+  const sessActive = (s) => isBusy(s.status) || (s.children || []).some((c) => isBusy(c.status));
+  const projbar = `<div class="projbar">` +
+    `<button class="pchip ${projFilter === "all" ? "on" : ""}" data-p="all">all · ${tree.length}</button>` +
+    dirs.map((d) => {
+      const inDir = tree.filter((s) => dirOf(s) === d);
+      const act = inDir.some(sessActive);
+      return `<button class="pchip ${projFilter === d ? "on" : ""}" data-p="${esc(d)}"
+        title="${esc(d)}">${act ? `<span class="adot"></span>` : ""}${esc(shortDir(d))} · ${inDir.length}</button>`;
+    }).join("") + `</div>`;
+
+  const tabs = filtered.map((s) =>
     `<button class="stab ${keyOf(s) === selectedKey ? "on" : ""}" data-k="${keyOf(s)}"
-      title="${esc(s.title)}">${esc((s.title || "session").slice(0, 28))}</button>`).join("");
-  const html = `<div class="tabbar">${tabs}</div>` + sessionHtml(sel, tails, multi);
+      title="${esc(s.title)}">${sessActive(s) ? `<span class="adot"></span>` : ""}${esc((s.title || "session").slice(0, 26))}</button>`).join("");
+  const html = projbar + `<div class="tabbar">${tabs}</div>` + sessionHtml(sel, tails, multi);
 
   const bodyScroll = el.scrollTop;
   const tailScrolls = [...el.querySelectorAll(".tail")].map((t) => t.scrollTop);
@@ -351,6 +390,13 @@ function renderAgents(snap) {
 
 // tab clicks (delegated — survives the 1 Hz re-render)
 $("agents").addEventListener("click", (e) => {
+  const pc = e.target.closest(".pchip");
+  if (pc) {
+    projFilter = pc.dataset.p;
+    localStorage.setItem("dash-proj", projFilter);
+    if (window.lastSnap) renderAgents(window.lastSnap);
+    return;
+  }
   const tab = e.target.closest(".stab");
   if (tab) { selectedKey = tab.dataset.k; if (window.lastSnap) renderAgents(window.lastSnap); return; }
   const tl = e.target.closest(".tail");

@@ -319,11 +319,13 @@ async function ocPoll() {
     id: s.id, srv: s._srv,
     title: s.title || "session",
     dir: (s.directory || "").replace(/^\/home\/[^/]+/, "~") || null,
+    status: statuses[`${s._srv}:${s.id}`] || null,
     tokens: s.tokens ? { input: s.tokens.input, output: s.tokens.output,
       reasoning: s.tokens.reasoning } : null,
     updated: s.time?.updated || 0,
     children: (children.get(`${s._srv}:${s.id}`) || []).map((c) => ({
       id: c.id, srv: c._srv, title: c.title || "task",
+      status: statuses[`${c._srv}:${c.id}`] || null,
       tokens: c.tokens ? { input: c.tokens.input, output: c.tokens.output,
         reasoning: c.tokens.reasoning } : null,
       updated: c.time?.updated || 0,
