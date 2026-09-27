@@ -565,7 +565,7 @@ $("eng-pause").addEventListener("click", () => {
   if (!engPaused) renderEng();
 });
 
-const NARR = /[▸▲]|\[QUOTA\]|FANOUT|MERGE|THROTTLED/;
+const NARR = /[▸▲]|\[QUOTA\]|FANOUT|MERGE|THROTTLED|DELEGATION REPORT/;
 function onOcEvent(ev) {
   const { t, kind, summary, text } = ev;
   if (/heartbeat|\.ping$/i.test(kind)) return; // keepalive spam — never render
