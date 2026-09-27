@@ -348,12 +348,18 @@ async function ocPoll() {
     try {
       const srv = state.servers.get(s._srv);
       const msgs = await jfetch(
-        `http://127.0.0.1:${s._srv}/session/${s.id}/message?limit=6`,
+        `http://127.0.0.1:${s._srv}/session/${s.id}/message?limit=20`,
         headersFor(srv || { pass: null }));
+      // delegation metric: task-tool calls vs total tool calls (recent window)
+      let tools = 0, tasks = 0;
+      for (const mm of msgs || []) for (const pp of (mm.parts || [])) {
+        if (pp.type === "tool") { tools++; if (pp.tool === "task") tasks++; }
+      }
       const tail = tailFromMessages(msgs || []);
         if (tail) tails[s.id] = {
           ...tail, agent: s.agent || s._srv,
           status: statuses[`${s._srv}:${s.id}`] || null,
+          deleg: { tasks, tools },
           text: String(tail.text).slice(-900),
         };
     } catch { /* gone mid-poll */ }

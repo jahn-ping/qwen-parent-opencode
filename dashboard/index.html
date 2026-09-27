@@ -292,7 +292,8 @@ function agentCard(sess, tail, isChild, multi) {
       <span class="model">${esc(model)}</span>
       <span class="src">${ago(sess.updated)}</span>
     </div>
-    <div class="row">${tokStr}${multi ? `<span class="meta">:${sess.srv}</span>` : ""}</div>
+    <div class="row">${tokStr}${t.deleg && t.deleg.tools > 0
+      ? `<span class="toks" ${t.deleg.tasks === 0 ? 'style="color:var(--yellow)"' : ""}>⚙ delegated <b>${t.deleg.tasks}/${t.deleg.tools}</b> calls</span>` : ""}${multi ? `<span class="meta">:${sess.srv}</span>` : ""}</div>
     ${nowLine}
     ${tailText ? `<div class="tail ${tailCls}" title="click to expand">${tailText}</div>` : ""}
   </div>`;
