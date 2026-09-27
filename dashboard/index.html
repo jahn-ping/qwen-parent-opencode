@@ -79,6 +79,12 @@
   .toks b { color: var(--fg); font-weight: 600; }
   .nowline { margin-top: 4px; font-family: var(--mono); font-size: 12px; color: var(--fg); }
   .nowline .verb { color: var(--green); font-weight: 600; }
+  .nowline.live .verb { animation: beepulse 1.6s ease-in-out infinite; }
+  .nowline.live::after { content: "· · ·"; color: var(--dim); letter-spacing: 2px;
+    animation: dots 1.2s steps(1, end) infinite; }
+  @keyframes dots { 0% { content: ""; } 25% { content: " ·"; } 50% { content: " · ·"; } 75% { content: " · · ·"; } }
+  .nowline .done { color: var(--green); opacity: 0.7; }
+  .nowline .idlew { color: var(--dim); opacity: 0.7; }
   .tail { margin-top: 4px; font-family: var(--mono); font-size: 11px; color: var(--dim);
           display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical;
           overflow: hidden; word-break: break-word; cursor: pointer;
@@ -289,13 +295,20 @@ function agentCard(sess, tail, isChild, multi) {
   const tk = sess.tokens;
   const tokStr = tk ? `<span class="toks">↑<b>${fmtK(tk.input)}</b> ↓<b>${fmtK(tk.output)}</b> 🧠<b>${fmtK(tk.reasoning)}</b></span>` : "";
   // "now" line — what this agent is doing at a glance
+  const lvl = actLevel(sess);
   const lbl = t.label || "";
-  const verb = lbl === "thinking" ? "💭 thinking"
-    : lbl.startsWith("tool:") ? `⚙ ${esc(lbl.slice(5))}`
-    : lbl === "text" ? "✍ composing" : "";
   const nowBody = t.text ? String(t.text).split("\n").filter(Boolean).slice(-1)[0] : "";
-  const nowLine = verb
-    ? `<div class="nowline"><span class="verb">${verb}</span>${nowBody ? " — " + esc(nowBody.slice(0, 90)) : ""}</div>` : "";
+  let nowLine;
+  if (lvl === 0) {
+    nowLine = isChild
+      ? `<div class="nowline"><span class="done">✓ completed</span></div>`
+      : `<div class="nowline"><span class="idlew">· idle</span></div>`;
+  } else {
+    const verb = lbl === "thinking" ? "💭 thinking"
+      : lbl.startsWith("tool:") ? `⚙ ${esc(lbl.slice(5))}`
+      : lbl === "text" ? "✍ composing" : "⚙ working";
+    nowLine = `<div class="nowline ${lvl === 2 ? "live" : ""}"><span class="verb">${verb}</span>${nowBody ? " — " + esc(nowBody.slice(0, 90)) : ""}</div>`;
+  }
   return `<div class="agent${isChild ? " child" : ""}">
     <div class="row">
       <span class="aname">${esc(agent)}</span>
@@ -394,13 +407,13 @@ function renderAgents(snap) {
   const html = projbar + `<div class="tabbar">${tabs}</div>` + sessionHtml(sel, tails, multi);
 
   const bodyScroll = el.scrollTop;
-  const tailScrolls = [...el.querySelectorAll(".tail")].map((t) => t.scrollTop);
+  const tailOpen = [...el.querySelectorAll(".tail")].map((t) => t.classList.contains("open"));
   if (el.dataset.sig !== html) {
     el.innerHTML = html;
     el.dataset.sig = html;
     el.scrollTop = bodyScroll;
     [...el.querySelectorAll(".tail")].forEach((t, i) => {
-      if (tailScrolls[i] != null) t.scrollTop = tailScrolls[i];
+      if (tailOpen[i]) t.classList.add("open"); // keep user-expanded tails open
     });
   }
 }
