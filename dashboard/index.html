@@ -27,7 +27,7 @@
   .chip-srv.up { color: var(--green); border-color: #1d4423; }
   main { display: flex; gap: 10px; padding: 10px; flex: 1; min-height: 0;
          overflow-x: auto; overflow-y: hidden; }
-  .col { flex: 0 0 auto; width: calc((100% - 30px) / 4); min-width: 320px;
+  .col { flex: 0 0 auto; width: calc((100% - 20px) / 3); min-width: 320px;
          display: flex; flex-direction: column; gap: 10px; min-height: 0;
          overflow: auto; resize: horizontal; }
   .panel { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px;
@@ -82,7 +82,7 @@
   .chartbox .lbl { display: flex; justify-content: space-between; font-family: var(--mono);
                    font-size: 11px; color: var(--dim); margin-bottom: 3px; }
   .chartbox .val { color: var(--green); }
-  canvas { width: 100%; height: 84px; display: block; }
+  canvas { width: 100%; height: 118px; display: block; }
   .gauges { display: flex; gap: 6px; font-family: var(--mono); font-size: 12px; flex-wrap: wrap; }
   .gauge { flex: 1; min-width: 76px; background: #0d1117; border: 1px solid var(--edge);
            border-radius: 6px; padding: 5px 7px; }
@@ -188,16 +188,14 @@
     </div>
   </div>
 
-  <div class="col" id="quotacol" style="display:none">
-    <div class="panel" id="quotapanel" style="flex:1">
+  <div class="col">
+    <div class="panel" id="quotapanel" style="display:none;flex:none">
       <h2>Quota guard — MiMo ≥25% reserved · NIM until 429
         <button class="zbtn" title="expand">⤢</button></h2>
-      <div class="panelbody" id="quotabody"></div>
+      <div class="panelbody" id="quotabody" style="overflow-y:visible"></div>
     </div>
-  </div>
 
-  <div class="col">
-    <div class="panel" id="panel-flow" style="flex:1">
+    <div class="panel" id="panel-flow" style="flex:1;min-height:180px">
       <h2>Flow — events &amp; ▸ narration
         <button class="zbtn" title="expand">⤢</button></h2>
       <div class="panelbody" id="ticker"></div>
@@ -441,9 +439,9 @@ function renderQuota(snap) {
   const q = snap.quota;
   $("quota-src").style.display = "";
   $("dot-q").classList.toggle("up", !!q.present);
-  const col = $("quotacol"), panel = $("quotapanel");
-  if (!q.present) { col.style.display = "none"; panel.classList.remove("alert", "warnstate"); return; }
-  col.style.display = "";
+  const panel = $("quotapanel");
+  if (!q.present) { panel.style.display = "none"; panel.classList.remove("alert", "warnstate"); return; }
+  panel.style.display = "";
   const kv = q.kv || {};
   $("quotabody").innerHTML =
     quotaRow("MiMo (opencode zen)", kv.zused ?? 0, kv.zbudget ?? 0, kv.ztrips ?? 0, kv.zbudget ?? 375, kv.zceil) +
@@ -557,7 +555,7 @@ function applySnapshot(snap) {
 // persist user-dragged panel sizes across reloads (skips zoomed panels)
 function initSizeMemory() {
   const cols = document.querySelectorAll("main > .col");
-  ["qc0", "qc1", "qc2", "qc3"].forEach((k, i) => {
+  ["qc0", "qc1", "qc2"].forEach((k, i) => {
     const v = localStorage.getItem(k);
     if (v && cols[i]) cols[i].style.width = v;
   });
