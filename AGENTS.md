@@ -43,6 +43,18 @@ one whenever you generate. Therefore:
 
 ## 4. When to fan out
 
+**FAN-OUT FLOOR (measurable, not optional):** any session that runs ≥ 5 of
+your tool calls MUST include at least 2 scout fan-outs while free quota is
+alive. opsx flows have guaranteed delegation points:
+- before `/opsx:propose` finalizes a proposal → codebase research sweep
+- before design.md is written → conventions/patterns sweep
+- after `/opsx:apply` finishes → verification sweep (scout reads the diff,
+  returns facts: files touched, loose ends)
+End long sessions with a one-line DELEGATION REPORT:
+    DELEGATION REPORT: 3 fan-outs · 4 briefs · ~30% of reading delegated
+If you finish below the floor with quota still alive, say why in that
+report. "It was faster myself" needs evidence, not habit.
+
 FAN OUT (parallel scouts) when the work is read-heavy:
 - "find all callers / usages of X across the repo"
 - "summarize what these N files do"
