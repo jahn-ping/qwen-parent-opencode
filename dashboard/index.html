@@ -79,7 +79,7 @@
   .toks b { color: var(--fg); font-weight: 600; }
   .nowline { margin-top: 4px; font-family: var(--mono); font-size: 12px; color: var(--fg); }
   .nowline .verb { color: var(--green); font-weight: 600; }
-  .nowline.live .verb { animation: beepulse 1.6s ease-in-out infinite; }
+  .nowline.on .verb { animation: beepulse 1.6s ease-in-out infinite; }
   .nowline.live::after { content: "· · ·"; color: var(--dim); letter-spacing: 2px;
     animation: dots 1.2s steps(1, end) infinite; }
   @keyframes dots { 0% { content: ""; } 25% { content: " ·"; } 50% { content: " · ·"; } 75% { content: " · · ·"; } }
@@ -304,16 +304,12 @@ function agentCard(sess, tail, isChild, multi) {
     nowLine = isChild
       ? `<div class="nowline"><span class="done">✓ completed</span></div>`
       : `<div class="nowline"><span class="idlew">· idle</span></div>`;
-  } else if (!live && lbl === "text") {
-    // final answer delivered, agent gone quiet — never fake "composing"
-    nowLine = isChild
-      ? `<div class="nowline"><span class="done">✓ delivered</span></div>`
-      : `<div class="nowline"><span class="done">✓ replied</span></div>`;
   } else {
+    // anything within the recent window is WORKING — animate it, always
     const verb = lbl === "thinking" ? "💭 thinking"
       : lbl.startsWith("tool:") ? `⚙ ${esc(lbl.slice(5))}`
       : lbl === "text" ? "✍ composing" : "⚙ working";
-    nowLine = `<div class="nowline ${live ? "live" : ""}"><span class="verb">${verb}</span>${nowBody ? " — " + esc(nowBody.slice(0, 90)) : ""}</div>`;
+    nowLine = `<div class="nowline ${lvl === 2 ? "live" : ""} on"><span class="verb">${verb}</span>${nowBody ? " — " + esc(nowBody.slice(0, 90)) : ""}</div>`;
   }
   return `<div class="agent${isChild ? " child" : ""}">
     <div class="row">
