@@ -52,6 +52,7 @@
   .adot { width: 7px; height: 7px; border-radius: 50%; background: var(--green);
           display: inline-block; margin-right: 5px; vertical-align: 0;
           box-shadow: 0 0 6px rgba(63,185,80,0.9); animation: beepulse 1.6s ease-in-out infinite; }
+  .adot.recent { background: var(--yellow); box-shadow: none; animation: none; }
   @keyframes beepulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
   .tabbar { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 7px; margin-bottom: 8px;
             border-bottom: 1px solid var(--edge); flex: none; }
@@ -313,6 +314,20 @@ let selectedKey = null; // "srv:id" of the tabbed session
 let projFilter = localStorage.getItem("dash-proj") || "all";
 const isBusy = (st) => !!st && /busy|running|pending|processing|generating/i.test(
   typeof st === "string" ? st : JSON.stringify(st));
+// activity by recency: /session/status is empty on this opencode version, but
+// every message updates the session's shared-storage timestamp — including
+// sessions from the desktop app's private server
+const ACT_LIVE = 90 * 1000, ACT_RECENT = 10 * 60 * 1000;
+const actLevel = (s) => {
+  if (isBusy(s.status) || (s.children || []).some((c) => isBusy(c.status))) return 2;
+  const times = [s.updated || 0].concat((s.children || []).map((c) => c.updated || 0));
+  const newest = Math.max(...times);
+  return newest === 0 ? 0 : Date.now() - newest < ACT_LIVE ? 2 : Date.now() - newest < ACT_RECENT ? 1 : 0;
+};
+const actDot = (lvl) => lvl === 2 ? `<span class="adot"></span>`
+  : lvl === 1 ? `<span class="adot recent"></span>` : "";
+const actChip = (lvl) => lvl === 2 ? `<span class="chip busy">ACTIVE</span>`
+  : lvl === 1 ? `<span class="chip">recent</span>` : "";
 const shortDir = (d) => {
   if (!d) return "?";
   const s = d.replace(/^~\/?/, "");
@@ -322,7 +337,7 @@ const shortDir = (d) => {
 function sessionHtml(s, tails, multi) {
   return `<div class="sess">
     <div class="row"><span class="name">${esc(s.title)}</span>
-    ${isBusy(s.status) ? `<span class="chip busy">ACTIVE</span>` : ""}
+    ${actChip(actLevel(s))}
     ${s.dir ? `<span class="meta" title="${esc(s.dir)}">${esc(s.dir)}</span>` : ""}
     <span class="src">${ago(s.updated)}</span></div>
     ${agentCard(s, tails[s.id], false, multi)}
@@ -361,19 +376,21 @@ function renderAgents(snap) {
   window.selTokens = (sel.children || []).reduce(
     (acc, c) => sumT(acc, c.tokens || zero), sumT(zero, sel.tokens || zero));
 
-  const sessActive = (s) => isBusy(s.status) || (s.children || []).some((c) => isBusy(c.status));
+  const sessActive = (s) => actLevel(s) > 0;
+  const sessLive = (s) => actLevel(s) === 2;
   const projbar = `<div class="projbar">` +
     `<button class="pchip ${projFilter === "all" ? "on" : ""}" data-p="all">all · ${tree.length}</button>` +
     dirs.map((d) => {
       const inDir = tree.filter((s) => dirOf(s) === d);
       const act = inDir.some(sessActive);
+      const live = inDir.some(sessLive);
       return `<button class="pchip ${projFilter === d ? "on" : ""}" data-p="${esc(d)}"
-        title="${esc(d)}">${act ? `<span class="adot"></span>` : ""}${esc(shortDir(d))} · ${inDir.length}</button>`;
+        title="${esc(d)}">${act ? `<span class="adot ${live ? "" : "recent"}"></span>` : ""}${esc(shortDir(d))} · ${inDir.length}</button>`;
     }).join("") + `</div>`;
 
   const tabs = filtered.map((s) =>
     `<button class="stab ${keyOf(s) === selectedKey ? "on" : ""}" data-k="${keyOf(s)}"
-      title="${esc(s.title)}">${sessActive(s) ? `<span class="adot"></span>` : ""}${esc((s.title || "session").slice(0, 26))}</button>`).join("");
+      title="${esc(s.title)}">${sessActive(s) ? actDot(sessLive(s) ? 2 : 1) : ""}${esc((s.title || "session").slice(0, 26))}</button>`).join("");
   const html = projbar + `<div class="tabbar">${tabs}</div>` + sessionHtml(sel, tails, multi);
 
   const bodyScroll = el.scrollTop;
