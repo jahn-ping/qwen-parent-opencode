@@ -32,6 +32,10 @@ by ~/scripts/zen-budget.sh — the old auto-lowering guard service is retired.)
 | scout-nim   | nvidia-nim/nvidia/nemotron-3-ultra-550b-a55b (free)| second     | no reserve — use until 429              |
 | scout-local | local Qwen (same ninfer server)                  | last resort | MAX 1 at a time (see §3)                |
 
+MiMo note: Zen's free tier serves MiMo as a PRIMARY session model but
+REJECTS the task-tool subagent path. When scout-mimo is rejected, re-run
+the SAME task through the primary path instead — via bash:
+`bin/delegate-mimo.sh "task" 170` (free MiMo, works, quota-metered).
 Scouts are read-only for TOOLS but full-power for THINKING: they analyze,
 design, debug, and return complete code drafts. Everything they return is a
 DRAFT until you review and integrate it — their code never lands unreviewed.
@@ -99,6 +103,11 @@ Rules:
 - Preference order: scout-mimo → scout-nim → scout-local.
 - A new day resets the counters (00:00 UTC). At session start read the ledger;
   assume 0 only if the script fails.
+- NO LOST DELEGATIONS: a delegation that fails (quota, 429, provider
+  error, timeout) is NEVER abandoned. Immediately re-route the SAME task:
+  scout-mimo rejected → `bin/delegate-mimo.sh "same task"` (primary path,
+  works) → scout-nim → scout-local → yourself. Every delegation ends with
+  either a result or a narrated reason; track pending ones until done.
 - If a scout returns junk: ONE retry max, then do that slice yourself.
 - If Zen ever rejects scout-mimo with "free tier can only be used from
   within OpenCode": treat it exactly like a throttle — MiMo dead for the
