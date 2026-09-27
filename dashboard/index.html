@@ -188,7 +188,7 @@
             <div class="v" id="mtpg" style="display:inline-block;margin-right:6px">–</div>
             <canvas id="mtpspark" style="width:70px;height:18px;display:inline-block;vertical-align:middle"></canvas>
           </div>
-          <div class="gauge"><div class="k">Tokens Σ</div><div class="v" id="tokv">–</div></div>
+          <div class="gauge" style="flex:1.3"><div class="k">Tokens · session + scouts</div><div class="v" id="tokv">–</div></div>
         </div>
         <div class="src" id="nf-note" style="font-size:11px"></div>
       </div>
@@ -323,6 +323,13 @@ function renderAgents(snap) {
   if (!selectedKey || !tree.some((s) => keyOf(s) === selectedKey))
     selectedKey = keyOf(tree[0]); // default: most recently active
   const sel = tree.find((s) => keyOf(s) === selectedKey) || tree[0];
+  // session-scoped tokens: the selected session plus every subagent it spawned
+  const sumT = (a, b) => ({ input: (a.input || 0) + (b.input || 0),
+    output: (a.output || 0) + (b.output || 0),
+    reasoning: (a.reasoning || 0) + (b.reasoning || 0) });
+  const zero = { input: 0, output: 0, reasoning: 0 };
+  window.selTokens = (sel.children || []).reduce(
+    (acc, c) => sumT(acc, c.tokens || zero), sumT(zero, sel.tokens || zero));
 
   const tabs = tree.map((s) =>
     `<button class="stab ${keyOf(s) === selectedKey ? "on" : ""}" data-k="${keyOf(s)}"
@@ -431,8 +438,8 @@ function renderCharts(snap) {
   const slots = nf.slots || [];
   $("queue").textContent = (nf.deferred != null ? nf.deferred : "–") + " / " +
                            (nf.processing != null ? nf.processing : "–");
-  const tk = (snap.oc || {}).tokens;
-  $("tokv").innerHTML = tk ? `↑<b>${fmtK(tk.input)}</b> ↓<b>${fmtK(tk.output)}</b>` : "–";
+  const tk = window.selTokens;
+  $("tokv").innerHTML = tk ? `↑<b>${fmtK(tk.input)}</b> ↓<b>${fmtK(tk.output)}</b> 🧠<b>${fmtK(tk.reasoning)}</b>` : "–";
 
   $("nf-note").textContent = nf.up
     ? (nf.rateSource === "docker-logs"
