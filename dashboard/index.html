@@ -299,15 +299,21 @@ function agentCard(sess, tail, isChild, multi) {
   const lbl = t.label || "";
   const nowBody = t.text ? String(t.text).split("\n").filter(Boolean).slice(-1)[0] : "";
   let nowLine;
+  const live = lvl === 2;
   if (lvl === 0) {
     nowLine = isChild
       ? `<div class="nowline"><span class="done">✓ completed</span></div>`
       : `<div class="nowline"><span class="idlew">· idle</span></div>`;
+  } else if (!live && lbl === "text") {
+    // final answer delivered, agent gone quiet — never fake "composing"
+    nowLine = isChild
+      ? `<div class="nowline"><span class="done">✓ delivered</span></div>`
+      : `<div class="nowline"><span class="done">✓ replied</span></div>`;
   } else {
     const verb = lbl === "thinking" ? "💭 thinking"
       : lbl.startsWith("tool:") ? `⚙ ${esc(lbl.slice(5))}`
       : lbl === "text" ? "✍ composing" : "⚙ working";
-    nowLine = `<div class="nowline ${lvl === 2 ? "live" : ""}"><span class="verb">${verb}</span>${nowBody ? " — " + esc(nowBody.slice(0, 90)) : ""}</div>`;
+    nowLine = `<div class="nowline ${live ? "live" : ""}"><span class="verb">${verb}</span>${nowBody ? " — " + esc(nowBody.slice(0, 90)) : ""}</div>`;
   }
   return `<div class="agent${isChild ? " child" : ""}">
     <div class="row">
