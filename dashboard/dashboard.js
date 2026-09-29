@@ -326,6 +326,7 @@ async function ocPoll() {
     children: (children.get(`${s._srv}:${s.id}`) || []).map((c) => ({
       id: c.id, srv: c._srv, title: c.title || "task",
       status: statuses[`${c._srv}:${c.id}`] || null,
+      created: c.time?.created || null,
       tokens: c.tokens ? { input: c.tokens.input, output: c.tokens.output,
         reasoning: c.tokens.reasoning } : null,
       updated: c.time?.updated || 0,

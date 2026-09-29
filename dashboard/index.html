@@ -261,6 +261,13 @@ function ago(t) {
   if (s < 5400) return Math.round(s / 60) + "m ago";
   return Math.round(s / 3600) + "h ago";
 }
+function fmtDur(ms) {
+  if (!ms || ms < 0) return "–";
+  const s = Math.round(ms / 1000);
+  if (s < 90) return s + "s";
+  const m = Math.floor(s / 60);
+  return m + "m " + (s % 60) + "s";
+}
 function fmtK(n) {
   if (n == null) return "–";
   if (n < 1000) return String(n);
@@ -294,6 +301,16 @@ function agentCard(sess, tail, isChild, multi) {
   const tailCls = t.label === "thinking" ? "thinking" : (t.label || "").startsWith("tool") ? "tool" : "";
   const tk = sess.tokens;
   const tokStr = tk ? `<span class="toks">↑<b>${fmtK(tk.input)}</b> ↓<b>${fmtK(tk.output)}</b> 🧠<b>${fmtK(tk.reasoning)}</b></span>` : "";
+  let extra = "";
+  if (isChild) {
+    // scout duration: created -> last update (or live elapsed while running)
+    if (sess.created) {
+      const end = lvl === 2 ? Date.now() : (sess.updated || Date.now());
+      extra += `<span class="toks">⏱ <b>${fmtDur(end - sess.created)}</b>${lvl === 2 ? "…" : ""}</span>`;
+    }
+    if (t.deleg && t.deleg.tools > 0)
+      extra += `<span class="toks">⚙ <b>${t.deleg.tools}</b> tool calls</span>`;
+  }
   // "now" line — what this agent is doing at a glance
   const lvl = actLevel(sess);
   const lbl = t.label || "";
@@ -318,7 +335,7 @@ function agentCard(sess, tail, isChild, multi) {
       <span class="model">${esc(model)}</span>
       <span class="src">${ago(sess.updated)}</span>
     </div>
-    <div class="row">${tokStr}${t.deleg && t.deleg.tools > 0
+    <div class="row">${tokStr}${extra}${t.deleg && !isChild && t.deleg.tools > 0
       ? `<span class="toks" ${t.deleg.tasks === 0 ? 'style="color:var(--yellow)"' : ""}>⚙ delegated <b>${t.deleg.tasks}/${t.deleg.tools}</b> calls</span>` : ""}${multi ? `<span class="meta">:${sess.srv}</span>` : ""}</div>
     ${nowLine}
     ${tailText ? `<div class="tail ${tailCls}" title="click to expand">${tailText}</div>` : ""}
